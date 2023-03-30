@@ -7,7 +7,9 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "VectorTypes.h"
 #include "Gravity/Flooring/FloorBase.h"
+#include "Gravity/Sphere/GravitySphere.h"
 
 ABasePawnPlayer::ABasePawnPlayer()
 {
@@ -50,7 +52,7 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	PerformGravity(DeltaTime);
+	PreformGravity(DeltaTime);
 	PreformPlayerMovement();
 }
 
@@ -122,18 +124,17 @@ void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Inside Boost: %s"), *GetVelocity().ToString());
 	Capsule->AddImpulse(GetVelocity() * BoostSpeed);
 }
 
 void ABasePawnPlayer::PreformPlayerMovement()
 {
-	if(!bContactedWithFloor)
+	if(!bContactedWithFloor && !bContactedWithSphere)
 	{
 		Capsule->AddImpulse(ControlInputVector * AirSpeed);
 		ConsumeMovementInputVector();
 	}
-	else if(bContactedWithFloor && bIsMagnetized)
+	else if((bContactedWithFloor || bContactedWithSphere) && bIsMagnetized)
 	{
 		Capsule->AddImpulse(ControlInputVector * GroundSpeed);
         ConsumeMovementInputVector();
@@ -141,26 +142,37 @@ void ABasePawnPlayer::PreformPlayerMovement()
 
 }
 
-void ABasePawnPlayer::PerformGravity(float DeltaTime)
+void ABasePawnPlayer::PreformGravity(float DeltaTime)
 {
 	if(CurrentGravity.Size() > 0.f && !bContactedWithFloor && bIsMagnetized)
 	{
 		Capsule->AddForce(CurrentGravity);
+		OrientToGravity(CurrentGravity, DeltaTime);
+	}
+	else if(!bContactedWithFloor && bIsMagnetized && bIsInsideSphere && !bContactedWithSphere)
+	{
+		const FVector AwayFromCenter = GetActorLocation() - SphereCenter;
+		Capsule->AddForce(AwayFromCenter.GetSafeNormal() * SphereGravityStrength);
+		OrientToGravity(AwayFromCenter, DeltaTime);
+	}
+}
 
-		//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
-		if(FVector::DotProduct(GetVelocity(), CurrentGravity) >= 1.f)
-		{
-			OrientToGravity = FRotationMatrix::MakeFromZY(-CurrentGravity, GetActorRightVector());
-			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), OrientToGravity.Rotator(), DeltaTime, 2.f);
-			SetActorRotation(InterpRotation);
-		}
-		else
-		{
-			//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
-			OrientToGravity = FRotationMatrix::MakeFromZX(-CurrentGravity, GetActorForwardVector());
-			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), OrientToGravity.Rotator(), DeltaTime, 2.f);
-			SetActorRotation(InterpRotation);
-		}
+void ABasePawnPlayer::OrientToGravity(FVector GravityToOrientTo, float DeltaTime)
+{
+	
+	//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
+	if(FVector::DotProduct(GetVelocity(), GravityToOrientTo) >= 1.f)
+	{
+		FeetToGravity = FRotationMatrix::MakeFromZY(-GravityToOrientTo, GetActorRightVector());
+		FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
+		SetActorRotation(InterpRotation);
+	}
+	else
+	{
+		//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
+		FeetToGravity = FRotationMatrix::MakeFromZX(-GravityToOrientTo, GetActorForwardVector());
+		FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
+		SetActorRotation(InterpRotation);
 	}
 }
 
@@ -177,7 +189,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 			//If the Rinterpto isn't done we still need to be rotated corrected when we land
-			SetActorRotation(OrientToGravity.Rotator());
+			SetActorRotation(FeetToGravity.Rotator());
 			//Important bool for other functionality
 			bContactedWithFloor = true;
 			//Stops the capsule from falling over
@@ -185,6 +197,18 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			//Set damping to a high value so that when we are walking it doesn't feel like we are skating
 			Capsule->SetLinearDamping(3.f);
 		}
+	}
+	if(AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
+	{
+		//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
+		SetActorRotation(FVector::CrossProduct(NormalImpulse.GetSafeNormal(), GetActorRightVector()).Rotation());
+		DrawDebugLine(GetWorld(), Hit.Location, Hit.Location + (NormalImpulse.GetSafeNormal() * 50.f), FColor::Red, true, 5.f);
+		//Important bool for other functionality
+		bContactedWithSphere = true;
+		//Stops the capsule from falling over
+		Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		//Set damping to a high value so that when we are walking it doesn't feel like we are skating
+		Capsule->SetLinearDamping(3.f);
 	}
 }
 

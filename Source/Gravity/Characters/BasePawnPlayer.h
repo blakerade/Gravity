@@ -7,6 +7,7 @@
 #include "EnhancedInputComponent.h"
 #include "BasePawnPlayer.generated.h"
 
+class AGravitySphere;
 class UCameraComponent;
 class USpringArmComponent;
 class UCapsuleComponent;
@@ -56,24 +57,40 @@ protected:
 
 	//Input Functions
 	void Move(const FInputActionValue& ActionValue);
+	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundSpeed = 100.f;
+	
 	void AirMove(const FInputActionValue& ActionValue);
+	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirSpeed = 10.f;
+	
 	void Look(const FInputActionValue& ActionValue);
+	
 	void Jump(const FInputActionValue& ActionValue);
+	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float JumpVelocity = 100.f;
+	
 	void Crouch(const FInputActionValue& ActionValue);
+	
 	void Magnetize(const FInputActionValue& ActionValue);
+	
 	bool bIsMagnetized = false;
+	
 	void Boost(const FInputActionValue& ActionValue);
+	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostSpeed = 100.f;
+	
 
 	virtual void PreformPlayerMovement();
-	virtual void PerformGravity(float DeltaTime);
+	
+	virtual void PreformGravity(float DeltaTime);
+	UPROPERTY(EditAnywhere, Category=Gravity)
+	float SphereGravityStrength = 10000.f;
+	
 	UFUNCTION()
 	void OnFloorHit(UPrimitiveComponent* HitComponent,
 		AActor* OtherActor,
@@ -87,8 +104,21 @@ private:
 	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
 
 	bool bContactedWithFloor = false;
-	FMatrix OrientToGravity;
+	bool bContactedWithSphere = false;
+	
+	FMatrix FeetToGravity;
+
+	bool bIsInsideSphere = false;
+
+	UPROPERTY()
+	AGravitySphere* Sphere;
+	FVector SphereCenter;
+
+	void OrientToGravity(FVector CurrentGravity, float DeltaTime);
 	
 public:
 	void SetCurrentGravity(FVector InGravity) { CurrentGravity = InGravity;}
+	void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
+	void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
+	void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
 };

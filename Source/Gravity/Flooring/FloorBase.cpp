@@ -19,6 +19,7 @@ void AFloorBase::BeginPlay()
 	if(GravityTrigger)
 	{
 		GravityTrigger->OnComponentBeginOverlap.AddDynamic(this, &AFloorBase::SetPawnGravity);
+		GravityTrigger->OnComponentEndOverlap.AddDynamic(this, &AFloorBase::RemovePawnGravity);
 	}
 	FlooringGravity = RootComponent->GetUpVector() * -GravityStrength;
 	
@@ -26,11 +27,17 @@ void AFloorBase::BeginPlay()
 
 void AFloorBase::SetPawnGravity(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult & SweepResult)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Inside SetPawnGravity 1"));
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Inside SetPawnGravity 2"));
 		PawnPlayer->SetCurrentGravity(FlooringGravity);
+	}
+}
+
+void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
+	{
+		PawnPlayer->SetCurrentGravity(FVector::ZeroVector);
 	}
 }
 

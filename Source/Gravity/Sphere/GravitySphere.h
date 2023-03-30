@@ -4,29 +4,26 @@
 
 #include "CoreMinimal.h"
 #include "Engine/StaticMeshActor.h"
-#include "FloorBase.generated.h"
+#include "GravitySphere.generated.h"
 
-
-class UBoxComponent;
-/**
- * 
- */
+class USphereComponent;
 UCLASS()
-class GRAVITY_API AFloorBase : public AStaticMeshActor
+class GRAVITY_API AGravitySphere : public AStaticMeshActor
 {
 	GENERATED_BODY()
+	
+public:	
+	AGravitySphere();
 
-public:
-	AFloorBase();
 
 protected:
 	virtual void BeginPlay() override;
-	
+
 	UPROPERTY(EditAnywhere)
-	UBoxComponent* GravityTrigger;
-	
+	USphereComponent* GravityTrigger;
+
 	UFUNCTION()
-	virtual void SetPawnGravity(UPrimitiveComponent* OverlappedComponent,
+	virtual void SetPawnIsInSphere(UPrimitiveComponent* OverlappedComponent,
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex,
@@ -34,16 +31,17 @@ protected:
 		const FHitResult & SweepResult);
 
 	UFUNCTION()
-	virtual void RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-	
+	virtual void SetPawnIsOutOfSphere(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
 	UPROPERTY(EditAnywhere)
 	FVector FlooringGravity;
 
 	UPROPERTY(EditAnywhere)
 	float GravityStrength = 10000.f;
-	
+
 private:
 	
-public:
-	
+public:	
+
+
 };
