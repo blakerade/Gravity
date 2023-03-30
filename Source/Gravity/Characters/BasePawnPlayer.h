@@ -50,6 +50,8 @@ protected:
 	UPROPERTY(EditAnywhere)
 	UInputAction* MagnetizeAction;
 	UPROPERTY(EditAnywhere)
+	UInputAction* BoostAction;
+	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterMovementMapping;
 
 	//Input Functions
@@ -66,6 +68,9 @@ protected:
 	void Crouch(const FInputActionValue& ActionValue);
 	void Magnetize(const FInputActionValue& ActionValue);
 	bool bIsMagnetized = false;
+	void Boost(const FInputActionValue& ActionValue);
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float BoostSpeed = 100.f;
 
 	virtual void PreformPlayerMovement();
 	virtual void PerformGravity(float DeltaTime);

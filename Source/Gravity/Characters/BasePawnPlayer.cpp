@@ -52,7 +52,6 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 
 	PerformGravity(DeltaTime);
 	PreformPlayerMovement();
-	UE_LOG(LogTemp, Warning, TEXT("%f"), bContactedWithFloor ? 1.f : 0.f);
 }
 
 void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -62,7 +61,7 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	if (UEnhancedInputComponent* PlayerEnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// This calls the handler function on the tick when MyInputAction starts, such as when pressing an action button.
-		if (MoveAction && AirMoveAction && LookAction && JumpAction && CrouchAction && MagnetizeAction)
+		if (MoveAction && AirMoveAction && LookAction && JumpAction && CrouchAction && MagnetizeAction && BoostAction)
 		{
 			PlayerEnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Move);
 			PlayerEnhancedInputComponent->BindAction(AirMoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::AirMove);
@@ -70,6 +69,7 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 			PlayerEnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Jump);
 			PlayerEnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Crouch);
 			PlayerEnhancedInputComponent->BindAction(MagnetizeAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Magnetize);
+			PlayerEnhancedInputComponent->BindAction(BoostAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Boost);
 		}
 	}
 }
@@ -120,6 +120,12 @@ void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 	bIsMagnetized = !bIsMagnetized;
 }
 
+void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
+{
+	UE_LOG(LogTemp, Warning, TEXT("Inside Boost: %s"), *GetVelocity().ToString());
+	Capsule->AddImpulse(GetVelocity() * BoostSpeed);
+}
+
 void ABasePawnPlayer::PreformPlayerMovement()
 {
 	if(!bContactedWithFloor)
@@ -139,7 +145,6 @@ void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
 	if(CurrentGravity.Size() > 0.f && !bContactedWithFloor && bIsMagnetized)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Inisde Perform Gravity"));
 		Capsule->AddForce(CurrentGravity);
 
 		//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
@@ -166,13 +171,13 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 		if(Capsule && !bContactedWithFloor && bIsMagnetized)	
 		{
 			// Commented out actions that probably do not help when landed but will stay here as possible debugging later on////////////////////////////////
-			// SetActorRotation(OrientToGravity.Rotator());
 			// Capsule->SetConstraintMode(EDOFMode::CustomPlane);
 			// Capsule->BodyInstance.CustomDOFPlaneNormal = GetActorRightVector();
 			// Capsule->SetPhysicsLinearVelocity(FVector::ZeroVector);
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-			
+			//If the Rinterpto isn't done we still need to be rotated corrected when we land
+			SetActorRotation(OrientToGravity.Rotator());
 			//Important bool for other functionality
 			bContactedWithFloor = true;
 			//Stops the capsule from falling over

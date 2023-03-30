@@ -60,6 +60,7 @@ DerivedDataCache/*
 
 ThirdParty/*
 Content/*
+!Content/Gravity/
 
 # Mac Artifacts
 .DS_Store
