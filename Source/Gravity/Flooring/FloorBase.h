@@ -24,6 +24,8 @@ protected:
 	
 	UPROPERTY(EditAnywhere)
 	UBoxComponent* GravityTrigger;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* BottomGravityTrigger;
 	
 	UFUNCTION()
 	virtual void SetPawnGravity(UPrimitiveComponent* OverlappedComponent,

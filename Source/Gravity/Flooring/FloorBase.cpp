@@ -10,6 +10,8 @@ AFloorBase::AFloorBase()
 {
 	GravityTrigger = CreateDefaultSubobject<UBoxComponent>("Gravity Trigger");
 	GravityTrigger->SetupAttachment(RootComponent);
+	BottomGravityTrigger = CreateDefaultSubobject<UBoxComponent>("BottomGravityTrigger");
+	BottomGravityTrigger->SetupAttachment(RootComponent);
 }
 
 void AFloorBase::BeginPlay()

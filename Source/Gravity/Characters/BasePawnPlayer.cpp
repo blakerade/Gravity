@@ -54,6 +54,7 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 
 	PreformGravity(DeltaTime);
 	PreformPlayerMovement();
+	FindSphere();
 }
 
 void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -103,13 +104,24 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 {
+	UE_LOG(LogTemp, Warning, TEXT("JUMP: 1"));
 	if(bContactedWithFloor && bIsMagnetized)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("JUMP: 2"));
 		bContactedWithFloor = false;
 		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
 		//Commented out because we no longer add a constraint on landing, could change in the future
 		// Capsule->SetConstraintMode(EDOFMode::None);
-		Capsule->SetLinearDamping(0.01f);
+		Capsule->SetLinearDamping(AirFriction);
+	}
+	if(bContactedWithSphere && bIsMagnetized)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("JUMP: 3"));
+		bContactedWithSphere = false;
+		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
+		//Commented out because we no longer add a constraint on landing, could change in the future
+		// Capsule->SetConstraintMode(EDOFMode::None);
+		Capsule->SetLinearDamping(AirFriction);
 	}
 }
 
@@ -119,7 +131,12 @@ void ABasePawnPlayer::Crouch(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 {
+	if(bContactedWithSphere || bContactedWithFloor)
+	{
+		Jump(1.f);
+	}
 	bIsMagnetized = !bIsMagnetized;
+
 }
 
 void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
@@ -151,9 +168,30 @@ void ABasePawnPlayer::PreformGravity(float DeltaTime)
 	}
 	else if(!bContactedWithFloor && bIsMagnetized && bIsInsideSphere && !bContactedWithSphere)
 	{
-		const FVector AwayFromCenter = GetActorLocation() - SphereCenter;
+		//Push us away from the center of the sphere
+		const FVector AwayFromCenter = GetActorLocation() -SphereCenter;
 		Capsule->AddForce(AwayFromCenter.GetSafeNormal() * SphereGravityStrength);
 		OrientToGravity(AwayFromCenter, DeltaTime);
+	}
+}
+
+void ABasePawnPlayer::FindSphere()
+{
+	//Trying to set these variables on BeginPlay() with GravitySphere doesn't work, this is currently the best way I can think to set these variables
+	if(bIsInsideSphere && !Sphere)
+	{
+		TArray<FHitResult> HitResults;
+		const FCollisionQueryParams TraceParams;
+		GetWorld()->LineTraceMultiByChannel(HitResults, GetActorLocation(), GetActorLocation() + (FVector::UpVector * 200000.f), ECollisionChannel::ECC_Visibility, TraceParams);
+		for(FHitResult VisHitResults: HitResults)
+		{
+			if(AGravitySphere* LevelSphere = Cast<AGravitySphere>(VisHitResults.GetActor()))
+			{
+				Sphere = LevelSphere;
+				SphereCenter = Sphere->GetActorLocation();
+				return;
+			}
+		}
 	}
 }
 
@@ -195,20 +233,22 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			//Stops the capsule from falling over
 			Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 			//Set damping to a high value so that when we are walking it doesn't feel like we are skating
-			Capsule->SetLinearDamping(3.f);
+			Capsule->SetLinearDamping(FloorFriction);
 		}
 	}
 	if(AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
 	{
-		//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
-		SetActorRotation(FVector::CrossProduct(NormalImpulse.GetSafeNormal(), GetActorRightVector()).Rotation());
-		DrawDebugLine(GetWorld(), Hit.Location, Hit.Location + (NormalImpulse.GetSafeNormal() * 50.f), FColor::Red, true, 5.f);
-		//Important bool for other functionality
-		bContactedWithSphere = true;
-		//Stops the capsule from falling over
-		Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-		//Set damping to a high value so that when we are walking it doesn't feel like we are skating
-		Capsule->SetLinearDamping(3.f);
+		if(Capsule && bIsMagnetized)
+		{
+			//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
+			SetActorRotation(FRotationMatrix::MakeFromZX(SphereCenter - GetActorLocation(), GetActorForwardVector()).Rotator());
+			//Important bool for other functionality
+			bContactedWithSphere = true;
+			//Stops the capsule from falling over
+			Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+			//Set damping to a high value so that when we are walking it doesn't feel like we are skating
+			Capsule->SetLinearDamping(FloorFriction);
+		}
 	}
 }
 

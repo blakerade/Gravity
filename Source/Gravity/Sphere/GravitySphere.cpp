@@ -37,8 +37,6 @@ void AGravitySphere::BeginPlay()
 		if(ABasePawnPlayer* PlayerToSetInSphere = Cast<ABasePawnPlayer>(Player))
 		{
 			PlayerToSetInSphere->SetIsInSphere(true);
-			PlayerToSetInSphere->SetSphere(this);
-			PlayerToSetInSphere->SetSphereCenter(GetActorLocation());
 		}
 	}
 

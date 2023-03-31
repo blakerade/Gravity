@@ -83,7 +83,12 @@ protected:
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostSpeed = 100.f;
+
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float FloorFriction = 3.f;
 	
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float AirFriction = 0.01f;
 
 	virtual void PreformPlayerMovement();
 	
@@ -113,6 +118,7 @@ private:
 	UPROPERTY()
 	AGravitySphere* Sphere;
 	FVector SphereCenter;
+	void FindSphere();
 
 	void OrientToGravity(FVector CurrentGravity, float DeltaTime);
 	
