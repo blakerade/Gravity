@@ -59,19 +59,19 @@ protected:
 	void Move(const FInputActionValue& ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float GroundSpeed = 100.f;
+	float GroundSpeed = 5000.f;
 	
 	void AirMove(const FInputActionValue& ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirSpeed = 10.f;
+	float AirSpeed = 100.f;
 	
 	void Look(const FInputActionValue& ActionValue);
 	
 	void Jump(const FInputActionValue& ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float JumpVelocity = 100.f;
+	float JumpVelocity = 25000.f;
 	
 	void Crouch(const FInputActionValue& ActionValue);
 	
@@ -80,12 +80,19 @@ protected:
 	bool bIsMagnetized = false;
 	
 	void Boost(const FInputActionValue& ActionValue);
-	
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float BoostSpeed = 100.f;
+	float BoostCurrentVelocityReduction = 2.5f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float BoostSpeed = 50000.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float BoostRechargeRate = 5.f;
+	bool bCanBoost = true;
+	int8 BoostCount = 0;
+	void BoostCountConsumer();
+	FTimerHandle BoostTimerHandle;
 
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float FloorFriction = 3.f;
+	float FloorFriction = 4.f;
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirFriction = 0.01f;
@@ -127,4 +134,5 @@ public:
 	void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
 	void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
 	void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
+	void SetContactedWith(bool bIsContactedWithAFloor);
 };

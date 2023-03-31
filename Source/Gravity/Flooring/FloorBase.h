@@ -36,7 +36,18 @@ protected:
 		const FHitResult & SweepResult);
 
 	UFUNCTION()
+virtual void SetPawnGravityForBottom(UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex,
+	bool bFromSweep,
+	const FHitResult & SweepResult);
+
+	UFUNCTION()
 	virtual void RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	UFUNCTION()
+	virtual void RemovePawnGravityForBottom(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 	
 	UPROPERTY(EditAnywhere)
 	FVector FlooringGravity;

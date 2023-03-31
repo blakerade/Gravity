@@ -8,6 +8,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "VectorTypes.h"
+#include "Chaos/SpatialAccelerationCollection.h"
 #include "Gravity/Flooring/FloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
 
@@ -16,6 +17,8 @@ ABasePawnPlayer::ABasePawnPlayer()
 	PrimaryActorTick.bCanEverTick = true;
 	Capsule = CreateDefaultSubobject<UCapsuleComponent>("Capsule");
 	SetRootComponent(Capsule);
+	Capsule->SetCapsuleHalfHeight(90.f);
+	Capsule->SetCapsuleRadius(30.f);
 	Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Skeleton");
 	Skeleton->SetupAttachment(RootComponent);
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>("SpringArm");
@@ -79,13 +82,16 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 {
+	//Adds to ControlInputValue, which is used in PreformPlayerMovement
 	const FVector2D Value = ActionValue.Get<FVector2D>();
+	//TODO Add differences for forward/backwards/lateral movement
 	AddMovementInput(GetActorForwardVector() * Value.Y);
 	AddMovementInput(GetActorRightVector() * Value.X);
 }
 
 void ABasePawnPlayer::AirMove(const FInputActionValue& ActionValue)
 {
+	//Adds to ControlInputValue, which is used in PreformPlayerMovement
 	if(!bContactedWithFloor)
 	{
 		const float Value = ActionValue.Get<float>();
@@ -104,10 +110,8 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 {
-	UE_LOG(LogTemp, Warning, TEXT("JUMP: 1"));
 	if(bContactedWithFloor && bIsMagnetized)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("JUMP: 2"));
 		bContactedWithFloor = false;
 		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
 		//Commented out because we no longer add a constraint on landing, could change in the future
@@ -116,7 +120,6 @@ void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 	}
 	if(bContactedWithSphere && bIsMagnetized)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("JUMP: 3"));
 		bContactedWithSphere = false;
 		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
 		//Commented out because we no longer add a constraint on landing, could change in the future
@@ -141,7 +144,28 @@ void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
 {
-	Capsule->AddImpulse(GetVelocity() * BoostSpeed);
+	bCanBoost = BoostCount >= 2 ? false : true;
+	if(bCanBoost)
+	{
+		Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
+		if(ControlInputVector.Size() != 0.f)
+		{
+			Capsule->AddImpulse(ControlInputVector * BoostSpeed);
+			BoostCount++;
+			GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
+		}
+		else
+		{
+			Capsule->AddImpulse(GetVelocity().GetSafeNormal() * BoostSpeed);
+			BoostCount++;
+			GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
+		}
+	}
+}
+
+void ABasePawnPlayer::BoostCountConsumer()
+{
+	BoostCount--;
 }
 
 void ABasePawnPlayer::PreformPlayerMovement()
@@ -251,4 +275,20 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 		}
 	}
 }
+
+void ABasePawnPlayer::SetContactedWith(bool bIsContactedWithAFloor)
+{
+	if(bContactedWithFloor)
+	{
+		bContactedWithFloor = bIsContactedWithAFloor;
+		Capsule->SetLinearDamping(AirFriction);
+		
+	}
+	if(bContactedWithSphere)
+	{
+		bContactedWithSphere = bIsContactedWithAFloor;
+		Capsule->SetLinearDamping(AirFriction);
+	}
+}
+
 
