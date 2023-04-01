@@ -60,6 +60,13 @@ protected:
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundSpeed = 5000.f;
+
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float ForwardSpeed = 1.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float BackwardsSpeed = 1.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float LateralSpeed = 1.f;
 	
 	void AirMove(const FInputActionValue& ActionValue);
 	
@@ -67,6 +74,9 @@ protected:
 	float AirSpeed = 100.f;
 	
 	void Look(const FInputActionValue& ActionValue);
+
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float AirForwardRollSpeed = 10.f;
 	
 	void Jump(const FInputActionValue& ActionValue);
 	
@@ -97,9 +107,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirFriction = 0.01f;
 
-	virtual void PreformPlayerMovement();
+	virtual void PerformPlayerMovement();
 	
-	virtual void PreformGravity(float DeltaTime);
+	virtual void PerformGravity(float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Gravity)
 	float SphereGravityStrength = 10000.f;
 	
@@ -128,6 +138,7 @@ private:
 	void FindSphere();
 
 	void OrientToGravity(FVector CurrentGravity, float DeltaTime);
+
 	
 public:
 	void SetCurrentGravity(FVector InGravity) { CurrentGravity = InGravity;}
@@ -135,4 +146,5 @@ public:
 	void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
 	void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
 	void SetContactedWith(bool bIsContactedWithAFloor);
+	bool GetContactedWith() {return bContactedWithFloor || bContactedWithSphere;}
 };

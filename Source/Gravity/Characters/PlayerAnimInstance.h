@@ -25,7 +25,11 @@ protected:
 
 private:
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
-	float Speed;
+	bool bOnAFloor;
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
+	float ForwardSpeed;
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
+	float LateralSpeed;
 	
 public:
 };

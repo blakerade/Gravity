@@ -3,6 +3,8 @@
 
 #include "PlayerAnimInstance.h"
 
+#include <string>
+
 #include "BasePawnPlayer.h"
 
 void UPlayerAnimInstance::NativeInitializeAnimation()
@@ -20,6 +22,13 @@ void UPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	if(Player)
 	{
-		Speed = Player->GetVelocity().Size();
+		bOnAFloor = Player->GetContactedWith();
+		if(bOnAFloor)
+		{
+			FTransform WorldTransform = Player->GetTransform();
+			FVector LocalVeclotiy = WorldTransform.InverseTransformVector(Player->GetVelocity());
+			ForwardSpeed = LocalVeclotiy.X;
+			LateralSpeed = LocalVeclotiy.Y;
+		}
 	}
 }

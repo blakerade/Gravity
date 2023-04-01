@@ -55,8 +55,8 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	PreformGravity(DeltaTime);
-	PreformPlayerMovement();
+	PerformGravity(DeltaTime);
+	PerformPlayerMovement();
 	FindSphere();
 }
 
@@ -84,9 +84,26 @@ void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 {
 	//Adds to ControlInputValue, which is used in PreformPlayerMovement
 	const FVector2D Value = ActionValue.Get<FVector2D>();
-	//TODO Add differences for forward/backwards/lateral movement
-	AddMovementInput(GetActorForwardVector() * Value.Y);
-	AddMovementInput(GetActorRightVector() * Value.X);
+
+	//Add differences for forward/backwards/lateral movement and if we are in the air or not
+	if(bContactedWithFloor || bContactedWithSphere)
+	{
+		AddMovementInput(GetActorRightVector() * Value.X * LateralSpeed);
+		if(Value.Y > 0.f)
+		{
+			AddMovementInput(GetActorForwardVector() * Value.Y * ForwardSpeed);
+		}
+		else if(Value.Y < 0.f)
+		{
+			AddMovementInput(GetActorForwardVector() * Value.Y * BackwardsSpeed);
+		}
+	}
+	else
+	{
+		AddMovementInput(GetActorForwardVector() * Value.Y);
+		AddMovementInput(GetActorRightVector() * Value.X);
+	}
+	
 }
 
 void ABasePawnPlayer::AirMove(const FInputActionValue& ActionValue)
@@ -102,10 +119,39 @@ void ABasePawnPlayer::AirMove(const FInputActionValue& ActionValue)
 void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 {
 	const FVector2D Value = ActionValue.Get<FVector2D>();
+	
 	//Have to Rotate the actor without controller because controller will only rotate in World coordinates
 	AddActorLocalRotation(FRotator(0.f,Value.X,0.f));
+	
 	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates
-	SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+	float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
+	if(SpringArmPitch <= -75.f)
+	{
+		if(Value.Y >= 0.f)
+		{
+			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+		}
+		else if(!bContactedWithFloor && !bContactedWithSphere)
+		{
+			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed * -FMath::Clamp(Value.Y, 0.f, 1.f));
+		}
+	}
+	else if(SpringArmPitch >= 40.f)
+	{
+		if(Value.Y <= 0.f)
+		{
+			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+		}
+		else if(!bContactedWithFloor && !bContactedWithSphere)
+		{
+			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed * -FMath::Clamp(Value.Y, 0.f, 1.f));
+		}
+	}
+	else
+	{
+		SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+	}
+	
 }
 
 void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
@@ -150,12 +196,14 @@ void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
 		Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
 		if(ControlInputVector.Size() != 0.f)
 		{
+			Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			Capsule->AddImpulse(ControlInputVector * BoostSpeed);
 			BoostCount++;
 			GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
 		}
 		else
 		{
+			Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
 			Capsule->AddImpulse(GetVelocity().GetSafeNormal() * BoostSpeed);
 			BoostCount++;
 			GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
@@ -168,7 +216,7 @@ void ABasePawnPlayer::BoostCountConsumer()
 	BoostCount--;
 }
 
-void ABasePawnPlayer::PreformPlayerMovement()
+void ABasePawnPlayer::PerformPlayerMovement()
 {
 	if(!bContactedWithFloor && !bContactedWithSphere)
 	{
@@ -183,7 +231,7 @@ void ABasePawnPlayer::PreformPlayerMovement()
 
 }
 
-void ABasePawnPlayer::PreformGravity(float DeltaTime)
+void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
 	if(CurrentGravity.Size() > 0.f && !bContactedWithFloor && bIsMagnetized)
 	{
