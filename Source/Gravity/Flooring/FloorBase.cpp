@@ -33,16 +33,8 @@ void AFloorBase::SetPawnGravity(UPrimitiveComponent* OverlappedComponent, AActor
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		PawnPlayer->SetCurrentGravity(FlooringGravity);
-	}
-}
-
-void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
-	{
-		PawnPlayer->SetCurrentGravity(FVector::ZeroVector);
-		PawnPlayer->SetContactedWith(false);
+		PawnPlayer->AddToGravities(FlooringGravity);
+		UE_LOG(LogTemp, Warning, TEXT("Added"));
 	}
 }
 
@@ -50,15 +42,38 @@ void AFloorBase::SetPawnGravityForBottom(UPrimitiveComponent* OverlappedComponen
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		PawnPlayer->SetCurrentGravity(-FlooringGravity);
+		PawnPlayer->AddToGravities(-FlooringGravity);
+		UE_LOG(LogTemp, Warning, TEXT("Added"));
 	}
 }
+
+void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Removed"));
+		UE_LOG(LogTemp, Warning, TEXT("%i"), PawnPlayer->GetGravitiesSize());
+		PawnPlayer->RemoveFromGravities(FlooringGravity);
+		if(PawnPlayer->GetGravitiesSize() == 0)
+		{
+			PawnPlayer->SetContactedWith(false);
+			PawnPlayer->SetMagnetization(false);
+		}
+	}
+}
+
 void AFloorBase::RemovePawnGravityForBottom(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		PawnPlayer->SetCurrentGravity(FVector::ZeroVector);
-		PawnPlayer->SetContactedWith(false);
+		UE_LOG(LogTemp, Warning, TEXT("Removed"));
+		UE_LOG(LogTemp, Warning, TEXT("%i"), PawnPlayer->GetGravitiesSize());
+		PawnPlayer->RemoveFromGravities(-FlooringGravity);
+		if(PawnPlayer->GetGravitiesSize() == 0)
+		{
+			PawnPlayer->SetContactedWith(false);
+			PawnPlayer->SetMagnetization(false);
+		}
 	}
 }
 

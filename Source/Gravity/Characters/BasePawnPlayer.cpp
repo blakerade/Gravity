@@ -54,10 +54,11 @@ void ABasePawnPlayer::BeginPlay()
 void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
+	
 	PerformGravity(DeltaTime);
 	PerformPlayerMovement();
 	FindSphere();
+	UE_LOG(LogTemp, Warning, TEXT("%i"), Gravities.Num());
 }
 
 void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -124,16 +125,16 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 	AddActorLocalRotation(FRotator(0.f,Value.X,0.f));
 	
 	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates
-	float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
+	const float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
 	if(SpringArmPitch <= -75.f)
 	{
 		if(Value.Y >= 0.f)
 		{
 			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
 		}
-		else if(!bContactedWithFloor && !bContactedWithSphere)
+		else if(Value.Y <= 0.f && !bContactedWithFloor && !bContactedWithSphere && !bIsMagnetized)
 		{
-			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed * -FMath::Clamp(Value.Y, 0.f, 1.f));
+			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed);
 		}
 	}
 	else if(SpringArmPitch >= 40.f)
@@ -142,9 +143,9 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 		{
 			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
 		}
-		else if(!bContactedWithFloor && !bContactedWithSphere)
+		else if(Value.Y >= 0.f && !bContactedWithFloor && !bContactedWithSphere && !bIsMagnetized)
 		{
-			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed * -FMath::Clamp(Value.Y, 0.f, 1.f));
+			Capsule->AddTorqueInRadians(GetActorRightVector() * -AirForwardRollSpeed);
 		}
 	}
 	else
@@ -233,17 +234,77 @@ void ABasePawnPlayer::PerformPlayerMovement()
 
 void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
-	if(CurrentGravity.Size() > 0.f && !bContactedWithFloor && bIsMagnetized)
+	if(bIsMagnetized && !bContactedWithFloor && !bContactedWithSphere)
 	{
-		Capsule->AddForce(CurrentGravity);
-		OrientToGravity(CurrentGravity, DeltaTime);
+		FindClosestGravity();
+		if(CurrentGravity.Size() > 0.f)
+		{
+			//Pull towards the closet floor
+			Capsule->AddForce(CurrentGravity);
+			OrientToGravity(CurrentGravity, DeltaTime);
+		}
+		else if(bIsInsideSphere)
+		{
+			//Push us away from the center of the sphere
+			const FVector AwayFromCenter = GetActorLocation() -SphereCenter;
+			Capsule->AddForce(AwayFromCenter.GetSafeNormal() * SphereGravityStrength);
+			OrientToGravity(AwayFromCenter, DeltaTime);
+		}
 	}
-	else if(!bContactedWithFloor && bIsMagnetized && bIsInsideSphere && !bContactedWithSphere)
+}
+
+void ABasePawnPlayer::AddToGravities(FVector GravityToAdd)
+{
+	Gravities.Add(GravityToAdd);
+}
+
+void ABasePawnPlayer::RemoveFromGravities(FVector GravityToRemove)
+{
+	Gravities.Remove(GravityToRemove);
+}
+
+
+void ABasePawnPlayer::FindClosestGravity()
+{
+	//Have any gravity triggers added themselves to the gravity array
+	if(Gravities.Num() > 0)
 	{
-		//Push us away from the center of the sphere
-		const FVector AwayFromCenter = GetActorLocation() -SphereCenter;
-		Capsule->AddForce(AwayFromCenter.GetSafeNormal() * SphereGravityStrength);
-		OrientToGravity(AwayFromCenter, DeltaTime);
+		FVector ClosestGravity;
+		float DistanceToClosestGravity = 0;
+		bool bHaveAGravity = false;
+		const UWorld* World = GetWorld();
+		for(FVector GravitiesToCheck: Gravities)
+		{
+			if(World)
+			{
+				//Reach out in each floors gravity to find which one is the closest
+				FHitResult HitResult;
+				World->LineTraceSingleByChannel(HitResult, GetActorLocation(), GetActorLocation() + (GravitiesToCheck), ECC_GameTraceChannel1);
+				DrawDebugLine(World, GetActorLocation(), GetActorLocation() +(GravitiesToCheck), FColor::Red);
+				if(HitResult.bBlockingHit)
+				{
+					if(bHaveAGravity)
+					{
+						if(HitResult.Distance < DistanceToClosestGravity) ClosestGravity = GravitiesToCheck;
+					}
+					else
+					{
+						DistanceToClosestGravity = HitResult.Distance;
+						ClosestGravity = GravitiesToCheck;
+						bHaveAGravity = true;
+					}
+				}
+			}
+		}
+		if(bHaveAGravity)
+		{
+			CurrentGravity = ClosestGravity;
+		}
+	}
+	else
+	{
+		//Gravity array is empty, dont look for any floors
+		CurrentGravity = FVector::ZeroVector;
 	}
 }
 

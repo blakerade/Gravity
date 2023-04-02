@@ -23,6 +23,8 @@ public:
 	ABasePawnPlayer();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	void AddToGravities(FVector GravityToAdd);
+	void RemoveFromGravities(FVector GravityToRemove);
 	
 protected:
 	virtual void BeginPlay() override;
@@ -125,6 +127,8 @@ private:
 	UPROPERTY(VisibleAnywhere)
 	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
 
+	TArray<FVector> Gravities;
+
 	bool bContactedWithFloor = false;
 	bool bContactedWithSphere = false;
 	
@@ -137,14 +141,17 @@ private:
 	FVector SphereCenter;
 	void FindSphere();
 
+	void FindClosestGravity();
 	void OrientToGravity(FVector CurrentGravity, float DeltaTime);
 
 	
 public:
-	void SetCurrentGravity(FVector InGravity) { CurrentGravity = InGravity;}
+	// void SetCurrentGravity(FVector InGravity) { CurrentGravity = InGravity;}
 	void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
-	void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
-	void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
+	// void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
+	// void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
 	void SetContactedWith(bool bIsContactedWithAFloor);
+	void SetMagnetization(bool bMagnetization) {bIsMagnetized = bMagnetization;}
 	bool GetContactedWith() {return bContactedWithFloor || bContactedWithSphere;}
+	int32 GetGravitiesSize() {return Gravities.Num(); }
 };
