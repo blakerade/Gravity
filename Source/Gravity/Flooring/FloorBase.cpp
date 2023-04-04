@@ -34,7 +34,6 @@ void AFloorBase::SetPawnGravity(UPrimitiveComponent* OverlappedComponent, AActor
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->AddToGravities(FlooringGravity);
-		UE_LOG(LogTemp, Warning, TEXT("Added"));
 	}
 }
 
@@ -43,7 +42,6 @@ void AFloorBase::SetPawnGravityForBottom(UPrimitiveComponent* OverlappedComponen
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->AddToGravities(-FlooringGravity);
-		UE_LOG(LogTemp, Warning, TEXT("Added"));
 	}
 }
 
@@ -51,8 +49,6 @@ void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AAc
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Removed"));
-		UE_LOG(LogTemp, Warning, TEXT("%i"), PawnPlayer->GetGravitiesSize());
 		PawnPlayer->RemoveFromGravities(FlooringGravity);
 		if(PawnPlayer->GetGravitiesSize() == 0)
 		{
@@ -66,8 +62,6 @@ void AFloorBase::RemovePawnGravityForBottom(UPrimitiveComponent* OverlappedCompo
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Removed"));
-		UE_LOG(LogTemp, Warning, TEXT("%i"), PawnPlayer->GetGravitiesSize());
 		PawnPlayer->RemoveFromGravities(-FlooringGravity);
 		if(PawnPlayer->GetGravitiesSize() == 0)
 		{

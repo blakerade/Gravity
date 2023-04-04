@@ -10,6 +10,7 @@
 #include "VectorTypes.h"
 #include "Chaos/SpatialAccelerationCollection.h"
 #include "Gravity/Flooring/FloorBase.h"
+#include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
 
 ABasePawnPlayer::ABasePawnPlayer()
@@ -25,7 +26,6 @@ ABasePawnPlayer::ABasePawnPlayer()
 	SpringArm->SetupAttachment(Skeleton);
 	Camera = CreateDefaultSubobject<UCameraComponent>("Camera");
 	Camera->SetupAttachment(SpringArm);
-	
 }
 
 void ABasePawnPlayer::BeginPlay()
@@ -58,7 +58,7 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 	PerformGravity(DeltaTime);
 	PerformPlayerMovement();
 	FindSphere();
-	UE_LOG(LogTemp, Warning, TEXT("%i"), Gravities.Num());
+	SphereFloorContactedGravity(DeltaTime);
 }
 
 void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -87,7 +87,7 @@ void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 	const FVector2D Value = ActionValue.Get<FVector2D>();
 
 	//Add differences for forward/backwards/lateral movement and if we are in the air or not
-	if(bContactedWithFloor || bContactedWithSphere)
+	if(GetContactedWith())
 	{
 		AddMovementInput(GetActorRightVector() * Value.X * LateralSpeed);
 		if(Value.Y > 0.f)
@@ -110,7 +110,7 @@ void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 void ABasePawnPlayer::AirMove(const FInputActionValue& ActionValue)
 {
 	//Adds to ControlInputValue, which is used in PreformPlayerMovement
-	if(!bContactedWithFloor)
+	if(!GetContactedWith())
 	{
 		const float Value = ActionValue.Get<float>();
 		AddMovementInput(GetActorUpVector() * Value);
@@ -132,7 +132,7 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 		{
 			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
 		}
-		else if(Value.Y <= 0.f && !bContactedWithFloor && !bContactedWithSphere && !bIsMagnetized)
+		else if(Value.Y <= 0.f && !GetContactedWith() && !bIsMagnetized)
 		{
 			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed);
 		}
@@ -143,7 +143,7 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 		{
 			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
 		}
-		else if(Value.Y >= 0.f && !bContactedWithFloor && !bContactedWithSphere && !bIsMagnetized)
+		else if(Value.Y >= 0.f && !GetContactedWith() && !bIsMagnetized)
 		{
 			Capsule->AddTorqueInRadians(GetActorRightVector() * -AirForwardRollSpeed);
 		}
@@ -157,17 +157,9 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 {
-	if(bContactedWithFloor && bIsMagnetized)
+	if(GetContactedWith() && bIsMagnetized)
 	{
-		bContactedWithFloor = false;
-		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
-		//Commented out because we no longer add a constraint on landing, could change in the future
-		// Capsule->SetConstraintMode(EDOFMode::None);
-		Capsule->SetLinearDamping(AirFriction);
-	}
-	if(bContactedWithSphere && bIsMagnetized)
-	{
-		bContactedWithSphere = false;
+		SetContactedWith(false);
 		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
 		//Commented out because we no longer add a constraint on landing, could change in the future
 		// Capsule->SetConstraintMode(EDOFMode::None);
@@ -181,7 +173,7 @@ void ABasePawnPlayer::Crouch(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 {
-	if(bContactedWithSphere || bContactedWithFloor)
+	if(GetContactedWith())
 	{
 		Jump(1.f);
 	}
@@ -219,12 +211,12 @@ void ABasePawnPlayer::BoostCountConsumer()
 
 void ABasePawnPlayer::PerformPlayerMovement()
 {
-	if(!bContactedWithFloor && !bContactedWithSphere)
+	if(!GetContactedWith())
 	{
 		Capsule->AddImpulse(ControlInputVector * AirSpeed);
 		ConsumeMovementInputVector();
 	}
-	else if((bContactedWithFloor || bContactedWithSphere) && bIsMagnetized)
+	else if(GetContactedWith() && bIsMagnetized)
 	{
 		Capsule->AddImpulse(ControlInputVector * GroundSpeed);
         ConsumeMovementInputVector();
@@ -234,13 +226,22 @@ void ABasePawnPlayer::PerformPlayerMovement()
 
 void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
-	if(bIsMagnetized && !bContactedWithFloor && !bContactedWithSphere)
+	if(bIsMagnetized && !GetContactedWith())
 	{
-		FindClosestGravity();
-		if(CurrentGravity.Size() > 0.f)
+		float GravityDistance;
+		bool bIsASphereFloor = false;
+		FindClosestGravity(GravityDistance);
+		IsThereACloserSphereFloor(GravityDistance, bIsASphereFloor);
+		if(CurrentGravity.Size() > 0.f && !bIsASphereFloor)
 		{
 			//Pull towards the closet floor
 			Capsule->AddForce(CurrentGravity);
+			OrientToGravity(CurrentGravity, DeltaTime);
+		}
+		else if(CurrentGravity.Size() > 0.f && bIsASphereFloor)
+		{
+			//Pull towards the center of sphere floor
+			Capsule->AddForce(CurrentGravity * SphereFloorGravityStrength);
 			OrientToGravity(CurrentGravity, DeltaTime);
 		}
 		else if(bIsInsideSphere)
@@ -253,18 +254,7 @@ void ABasePawnPlayer::PerformGravity(float DeltaTime)
 	}
 }
 
-void ABasePawnPlayer::AddToGravities(FVector GravityToAdd)
-{
-	Gravities.Add(GravityToAdd);
-}
-
-void ABasePawnPlayer::RemoveFromGravities(FVector GravityToRemove)
-{
-	Gravities.Remove(GravityToRemove);
-}
-
-
-void ABasePawnPlayer::FindClosestGravity()
+void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity)
 {
 	//Have any gravity triggers added themselves to the gravity array
 	if(Gravities.Num() > 0)
@@ -286,25 +276,63 @@ void ABasePawnPlayer::FindClosestGravity()
 					if(bHaveAGravity)
 					{
 						if(HitResult.Distance < DistanceToClosestGravity) ClosestGravity = GravitiesToCheck;
+						OutDistanceToGravity = HitResult.Distance;
+						CurrentGravity = ClosestGravity;
 					}
 					else
 					{
 						DistanceToClosestGravity = HitResult.Distance;
 						ClosestGravity = GravitiesToCheck;
 						bHaveAGravity = true;
+						OutDistanceToGravity = HitResult.Distance;
+						CurrentGravity = ClosestGravity;
 					}
 				}
 			}
-		}
-		if(bHaveAGravity)
-		{
-			CurrentGravity = ClosestGravity;
 		}
 	}
 	else
 	{
 		//Gravity array is empty, dont look for any floors
 		CurrentGravity = FVector::ZeroVector;
+	}
+}
+
+void ABasePawnPlayer::IsThereACloserSphereFloor(float GravityDistanceCheck, bool& OutSphereFloorOverride)
+{
+	//Have any gravity triggers added themselves to the sphere array
+	if(SphereFloors.Num() > 0)
+	{
+		FVector ClosestGravity;
+		float DistanceToClosestGravity = 0;
+		bool bHaveAGravity = false;
+		const UWorld* World = GetWorld();
+		for(ASphereFloorBase* SpheresToCheck: SphereFloors)
+		{
+			if(World)
+			{
+				//Reach out in each floors gravity to find which one is the closest
+				FHitResult HitResult;
+				World->LineTraceSingleByChannel(HitResult, GetActorLocation(), SpheresToCheck->GetActorLocation(), ECC_GameTraceChannel1);
+				DrawDebugLine(World, GetActorLocation(), SpheresToCheck->GetActorLocation(), FColor::Red);
+				if(HitResult.bBlockingHit)
+				{
+					if(bHaveAGravity)
+					{
+						if(HitResult.Distance < DistanceToClosestGravity) ClosestGravity = SpheresToCheck->GetActorLocation() - GetActorLocation();
+						if(HitResult.Distance < GravityDistanceCheck) CurrentGravity = ClosestGravity;
+					}
+					else
+					{
+						DistanceToClosestGravity = HitResult.Distance;
+						ClosestGravity = SpheresToCheck->GetActorLocation() - GetActorLocation();
+						bHaveAGravity = true;
+						CurrentGravity = ClosestGravity;
+						OutSphereFloorOverride = true;
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -351,7 +379,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 {
 	if(AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 	{
-		if(Capsule && !bContactedWithFloor && bIsMagnetized)	
+		if(!bContactedWithFloor && Capsule && bIsMagnetized)	
 		{
 			// Commented out actions that probably do not help when landed but will stay here as possible debugging later on////////////////////////////////
 			// Capsule->SetConstraintMode(EDOFMode::CustomPlane);
@@ -376,26 +404,45 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
 			SetActorRotation(FRotationMatrix::MakeFromZX(SphereCenter - GetActorLocation(), GetActorForwardVector()).Rotator());
 			//Important bool for other functionality
-			bContactedWithSphere = true;
+			bContactedWithLevelSphere = true;
 			//Stops the capsule from falling over
 			Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 			//Set damping to a high value so that when we are walking it doesn't feel like we are skating
 			Capsule->SetLinearDamping(FloorFriction);
 		}
 	}
+	if(ASphereFloorBase* SphereFloor = Cast<ASphereFloorBase>(OtherActor))
+	{
+		//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
+		SetActorRotation(FRotationMatrix::MakeFromZX(GetActorLocation() - SphereFloor->GetActorLocation(), GetActorForwardVector()).Rotator());
+		//Important bool for other functionality
+		bContactedWithSphereFloor = true;
+		//Stops the capsule from falling over
+		Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		//Set damping to a high value so that when we are walking it doesn't feel like we are skating
+		Capsule->SetLinearDamping(FloorFriction);
+		//Set what sphere floor with are contacted with so that we can continue to be pulled and oriented to it
+		SphereContactedWith = SphereFloor;
+	}
 }
 
-void ABasePawnPlayer::SetContactedWith(bool bIsContactedWithAFloor)
+void ABasePawnPlayer::SphereFloorContactedGravity(float DeltaTime)
 {
-	if(bContactedWithFloor)
+	if(bContactedWithSphereFloor && SphereContactedWith)
 	{
-		bContactedWithFloor = bIsContactedWithAFloor;
-		Capsule->SetLinearDamping(AirFriction);
-		
+		//Pull towards the center of sphere floor while we are contacted with the floor
+		const FVector ToSphereGravity = (SphereContactedWith->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+		Capsule->AddForce(ToSphereGravity * SphereFloorContactedForceCorrection);
+		OrientToGravity(ToSphereGravity, DeltaTime);
 	}
-	if(bContactedWithSphere)
+}
+void ABasePawnPlayer::SetContactedWith(bool bIsContactedWith)
+{
+	if(bContactedWithFloor || bContactedWithLevelSphere || bContactedWithSphereFloor)
 	{
-		bContactedWithSphere = bIsContactedWithAFloor;
+		bContactedWithFloor = bIsContactedWith;
+		bContactedWithSphereFloor = bIsContactedWith;
+		bContactedWithLevelSphere = bIsContactedWith;
 		Capsule->SetLinearDamping(AirFriction);
 	}
 }

@@ -22,6 +22,7 @@ void UPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	if(Player)
 	{
+		Pitch = Player->GetSpringArmPitch();
 		bOnAFloor = Player->GetContactedWith();
 		if(bOnAFloor)
 		{

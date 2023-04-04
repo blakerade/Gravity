@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "EnhancedInputComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "BasePawnPlayer.generated.h"
 
+class ASphereFloorBase;
 class AGravitySphere;
 class UCameraComponent;
 class USpringArmComponent;
@@ -23,8 +25,7 @@ public:
 	ABasePawnPlayer();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-	void AddToGravities(FVector GravityToAdd);
-	void RemoveFromGravities(FVector GravityToRemove);
+
 	
 protected:
 	virtual void BeginPlay() override;
@@ -114,6 +115,10 @@ protected:
 	virtual void PerformGravity(float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Gravity)
 	float SphereGravityStrength = 10000.f;
+	UPROPERTY(EditAnywhere, Category=Gravity)
+	float SphereFloorGravityStrength = 3000.f;
+	UPROPERTY(EditAnywhere, Category=Gravity)
+	float SphereFloorContactedForceCorrection = 3000.f;
 	
 	UFUNCTION()
 	void OnFloorHit(UPrimitiveComponent* HitComponent,
@@ -128,9 +133,12 @@ private:
 	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
 
 	TArray<FVector> Gravities;
+	TArray<ASphereFloorBase*> SphereFloors;
 
 	bool bContactedWithFloor = false;
-	bool bContactedWithSphere = false;
+	bool bContactedWithSphereFloor = false;
+	ASphereFloorBase* SphereContactedWith;
+	bool bContactedWithLevelSphere = false;
 	
 	FMatrix FeetToGravity;
 
@@ -140,9 +148,10 @@ private:
 	AGravitySphere* Sphere;
 	FVector SphereCenter;
 	void FindSphere();
-
-	void FindClosestGravity();
+	void FindClosestGravity(float& OutDistanceToGravity);
+	void IsThereACloserSphereFloor(float GravityDistanceCheck, bool& OutSphereFloorOverride);
 	void OrientToGravity(FVector CurrentGravity, float DeltaTime);
+	void SphereFloorContactedGravity(float DeltaTime);
 
 	
 public:
@@ -150,8 +159,14 @@ public:
 	void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
 	// void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
 	// void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
-	void SetContactedWith(bool bIsContactedWithAFloor);
+	void SetContactedWith(bool bIsContactedWith);
 	void SetMagnetization(bool bMagnetization) {bIsMagnetized = bMagnetization;}
-	bool GetContactedWith() {return bContactedWithFloor || bContactedWithSphere;}
+	bool GetContactedWith() {return bContactedWithFloor || bContactedWithLevelSphere;}
 	int32 GetGravitiesSize() {return Gravities.Num(); }
+	void AddToGravities(FVector GravityToAdd) {Gravities.Add(GravityToAdd);}
+	void RemoveFromGravities(FVector GravityToRemove) 	{Gravities.Remove(GravityToRemove);}
+	int32 GetSpheresSize() {return SphereFloors.Num(); }
+	void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
+	void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
+	float GetSpringArmPitch() { return SpringArm->GetRelativeRotation().Pitch; } 
 };

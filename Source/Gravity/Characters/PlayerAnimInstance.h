@@ -30,6 +30,10 @@ private:
 	float ForwardSpeed;
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
 	float LateralSpeed;
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
+	float Yaw;
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
+	float Pitch;
 	
 public:
 };
