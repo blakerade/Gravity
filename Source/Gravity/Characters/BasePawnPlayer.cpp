@@ -128,6 +128,7 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 	const float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
 	if(SpringArmPitch <= -75.f)
 	{
+		//this if is for how far to look down
 		if(Value.Y >= 0.f)
 		{
 			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
@@ -137,8 +138,9 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed);
 		}
 	}
-	else if(SpringArmPitch >= 40.f)
+	else if(SpringArmPitch >= 70.f)
 	{
+		//this if is for how far to look up
 		if(Value.Y <= 0.f)
 		{
 			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
