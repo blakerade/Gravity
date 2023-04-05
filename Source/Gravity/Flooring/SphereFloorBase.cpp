@@ -27,7 +27,6 @@ void ASphereFloorBase::SetPawnGravity(UPrimitiveComponent* OverlappedComponent, 
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->AddToSpheres(this);
-		UE_LOG(LogTemp, Warning, TEXT("Added"));
 	}
 }
 
@@ -37,8 +36,7 @@ void ASphereFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponen
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->RemoveFromSphere(this);
-		UE_LOG(LogTemp, Warning, TEXT("Removed"));
-		if(PawnPlayer->GetSpheresSize() == 0)
+		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetContactedWith(false);
 			PawnPlayer->SetMagnetization(false);

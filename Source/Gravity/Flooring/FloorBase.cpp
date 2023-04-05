@@ -50,7 +50,7 @@ void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AAc
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->RemoveFromGravities(FlooringGravity);
-		if(PawnPlayer->GetGravitiesSize() == 0)
+		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetContactedWith(false);
 			PawnPlayer->SetMagnetization(false);
@@ -63,7 +63,7 @@ void AFloorBase::RemovePawnGravityForBottom(UPrimitiveComponent* OverlappedCompo
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->RemoveFromGravities(-FlooringGravity);
-		if(PawnPlayer->GetGravitiesSize() == 0)
+		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetContactedWith(false);
 			PawnPlayer->SetMagnetization(false);

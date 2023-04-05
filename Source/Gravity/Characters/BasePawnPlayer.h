@@ -8,6 +8,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "BasePawnPlayer.generated.h"
 
+struct FHUDPackage;
 class ASphereFloorBase;
 class AGravitySphere;
 class UCameraComponent;
@@ -29,7 +30,7 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
-
+	
 	//Components
 	UPROPERTY(EditAnywhere)
 	UCapsuleComponent* Capsule;
