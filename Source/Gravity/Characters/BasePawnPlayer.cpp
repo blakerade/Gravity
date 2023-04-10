@@ -83,26 +83,26 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 {
-	//Adds to ControlInputValue, which is used in PreformPlayerMovement
+	//Adds to ControlInputValue, which is used in PerformPlayerMovement
 	const FVector2D Value = ActionValue.Get<FVector2D>();
 
 	//Add differences for forward/backwards/lateral movement and if we are in the air or not
 	if(GetContactedWith())
 	{
-		AddMovementInput(GetActorRightVector() * Value.X * LateralSpeed);
-		if(Value.Y > 0.f)
+		AddMovementInput(GetActorRightVector() * Value.Y * LateralSpeed);
+		if(Value.X > 0.f)
 		{
-			AddMovementInput(GetActorForwardVector() * Value.Y * ForwardSpeed);
+			AddMovementInput(GetActorForwardVector() * Value.X * ForwardSpeed);
 		}
-		else if(Value.Y < 0.f)
+		else if(Value.X < 0.f)
 		{
-			AddMovementInput(GetActorForwardVector() * Value.Y * BackwardsSpeed);
+			AddMovementInput(GetActorForwardVector() * Value.X * BackwardsSpeed);
 		}
 	}
 	else
 	{
-		AddMovementInput(GetActorForwardVector() * Value.Y);
-		AddMovementInput(GetActorRightVector() * Value.X);
+		AddMovementInput(GetActorForwardVector() * Value.X);
+		AddMovementInput(GetActorRightVector() * Value.Y);
 	}
 	
 }
@@ -166,6 +166,7 @@ void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 		//Commented out because we no longer add a constraint on landing, could change in the future
 		// Capsule->SetConstraintMode(EDOFMode::None);
 		Capsule->SetLinearDamping(AirFriction);
+		ZeroOutCurrentGravity();
 	}
 }
 
@@ -242,6 +243,7 @@ void ABasePawnPlayer::PerformGravity(float DeltaTime)
 		}
 		else if(CurrentGravity.Size() > 0.f && bIsASphereFloor)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("Iniside SphereFloorGravity"));
 			//Pull towards the center of sphere floor
 			Capsule->AddForce(CurrentGravity * SphereFloorGravityStrength);
 			OrientToGravity(CurrentGravity, DeltaTime);
@@ -275,14 +277,19 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity)
 				DrawDebugLine(World, GetActorLocation(), GetActorLocation() +(GravitiesToCheck), FColor::Red);
 				if(HitResult.bBlockingHit)
 				{
+					//If we already have a gravity set as the current closest
 					if(bHaveAGravity)
 					{
+						//Check if this new hit is closer than the current closest gravity and set it as the new closest gravity if so
 						if(HitResult.Distance < DistanceToClosestGravity) ClosestGravity = GravitiesToCheck;
+						//set the distance to this new closest gravity for future checks
 						OutDistanceToGravity = HitResult.Distance;
+						//Set the actual variable used for pulling towards a floor
 						CurrentGravity = ClosestGravity;
 					}
 					else
 					{
+						//this is the first hit we have so set it as the closest gravity
 						DistanceToClosestGravity = HitResult.Distance;
 						ClosestGravity = GravitiesToCheck;
 						bHaveAGravity = true;
@@ -296,7 +303,7 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity)
 	else
 	{
 		//Gravity array is empty, dont look for any floors
-		CurrentGravity = FVector::ZeroVector;
+		ZeroOutCurrentGravity();
 	}
 }
 
@@ -326,11 +333,15 @@ void ABasePawnPlayer::IsThereACloserSphereFloor(float GravityDistanceCheck, bool
 					}
 					else
 					{
-						DistanceToClosestGravity = HitResult.Distance;
-						ClosestGravity = SpheresToCheck->GetActorLocation() - GetActorLocation();
-						bHaveAGravity = true;
-						CurrentGravity = ClosestGravity;
-						OutSphereFloorOverride = true;
+						if(HitResult.Distance < GravityDistanceCheck)
+						{
+							UE_LOG(LogTemp, Warning, TEXT("Gravity Should be Set"));
+							DistanceToClosestGravity = HitResult.Distance;
+							ClosestGravity = SpheresToCheck->GetActorLocation() - GetActorLocation();
+							bHaveAGravity = true;
+							CurrentGravity = ClosestGravity;
+							OutSphereFloorOverride = true;
+						}
 					}
 				}
 			}
@@ -340,7 +351,7 @@ void ABasePawnPlayer::IsThereACloserSphereFloor(float GravityDistanceCheck, bool
 
 void ABasePawnPlayer::FindSphere()
 {
-	//Trying to set these variables on BeginPlay() with GravitySphere doesn't work, this is currently the best way I can think to set these variables
+	//Trying to set these variables on BeginPlay() with GravitySphere doesn't work (BeginOverlap might actually work, should double check), this is currently the best way I can think to set these variables
 	if(bIsInsideSphere && !Sphere)
 	{
 		TArray<FHitResult> HitResults;

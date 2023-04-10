@@ -1,0 +1,27 @@
+-Find gravity is a one time function. Velocity/Distance to get which one we will commit to.
+
+-Put legs down when bMagnitize is active.
+
+-Hud flashes first time gravity is availible.
+
+-Machine combat: basic assualt rifle and a grenade launcher possibly.
+
+-Cylinder floors?
+
+-Smooth of walking in sphere by looking at how walking on sphere works.
+
+-Animations are complete first draft trash.
+
+-Leaving last gravity turns off Magnitize (should probably be switched to leave it on).
+
+-Increase boost speed.
+
+-Change Yaw in air to being turn by torque and not AddActorRotation.
+
+-GameMode where there is a ball that getes pushed to other base (hole in sphere).
+
+-Figure out texture streaming warning nonsense.
+
+-Figure out locking rotation when on a floor so we can use stairs/ramps.
+
+-Air Move in basepawn can probably be moved to the main move function with a Axis3D input

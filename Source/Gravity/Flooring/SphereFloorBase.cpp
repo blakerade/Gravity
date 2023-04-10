@@ -39,7 +39,6 @@ void ASphereFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponen
 		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetContactedWith(false);
-			PawnPlayer->SetMagnetization(false);
 		}
 	}
 }

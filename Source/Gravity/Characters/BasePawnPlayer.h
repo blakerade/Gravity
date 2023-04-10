@@ -161,7 +161,7 @@ public:
 	// void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
 	// void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
 	void SetContactedWith(bool bIsContactedWith);
-	void SetMagnetization(bool bMagnetization) {bIsMagnetized = bMagnetization;}
+	void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector;}
 	bool GetContactedWith() {return bContactedWithFloor || bContactedWithLevelSphere;}
 	int32 GetGravitiesSize() {return Gravities.Num(); }
 	void AddToGravities(FVector GravityToAdd) {Gravities.Add(GravityToAdd);}
@@ -169,5 +169,6 @@ public:
 	int32 GetSpheresSize() {return SphereFloors.Num(); }
 	void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
 	void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
-	float GetSpringArmPitch() { return SpringArm->GetRelativeRotation().Pitch; } 
+	float GetSpringArmPitch() { return SpringArm->GetRelativeRotation().Pitch; }
+	bool GetIsMagnitized() {return bIsMagnetized;}
 };

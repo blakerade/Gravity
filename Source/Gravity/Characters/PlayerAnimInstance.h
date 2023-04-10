@@ -34,6 +34,8 @@ private:
 	float Yaw;
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
 	float Pitch;
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
+	bool bMagnitized;
 	
 public:
 };

@@ -28,8 +28,15 @@ void UPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		{
 			FTransform WorldTransform = Player->GetTransform();
 			FVector LocalVeclotiy = WorldTransform.InverseTransformVector(Player->GetVelocity());
-			ForwardSpeed = LocalVeclotiy.X;
-			LateralSpeed = LocalVeclotiy.Y;
+			if(!FMath::IsNearlyZero(LocalVeclotiy.X, 0.2)) ForwardSpeed = LocalVeclotiy.X;
+			else ForwardSpeed = 0.f;
+			if(!FMath::IsNearlyZero(LocalVeclotiy.Y, 0.2)) LateralSpeed = LocalVeclotiy.Y;
+			else LateralSpeed = 0.f;
+			bMagnitized = false;
+		}
+		if(!bOnAFloor)
+		{
+			bMagnitized = Player->GetIsMagnitized();
 		}
 	}
 }
