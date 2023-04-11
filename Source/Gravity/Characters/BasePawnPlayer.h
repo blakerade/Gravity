@@ -127,11 +127,14 @@ protected:
 		UPrimitiveComponent* OtherComp,
 		FVector NormalImpulse,
 		const FHitResult& Hit);
-	
+
+	UPROPERTY(EditAnywhere)
+	float KnockBackImpulse = 1.f;
 
 private:
 	UPROPERTY(VisibleAnywhere)
 	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
+	bool bHaveAGravity = false;
 
 	TArray<FVector> Gravities;
 	TArray<ASphereFloorBase*> SphereFloors;
@@ -149,9 +152,11 @@ private:
 	AGravitySphere* Sphere;
 	FVector SphereCenter;
 	void FindSphere();
-	void FindClosestGravity(float& OutDistanceToGravity);
-	void IsThereACloserSphereFloor(float GravityDistanceCheck, bool& OutSphereFloorOverride);
-	void OrientToGravity(FVector CurrentGravity, float DeltaTime);
+	void FindClosestGravity(float& OutDistanceToGravity, bool& OutIsAFloorBase);
+	void IsThereACloserSphereFloor(bool bHaveAFloorBase, float& InAndOutGravityDistanceCheck, bool& OutSphereFloorOverride);
+	void OrientToGravity(FVector CurrentGravity, float DeltaTime, float DistanceToGravity);
+	UPROPERTY(EditAnywhere, Category = Movement)
+	float RotationSpeedDampener = 20.f;
 	void SphereFloorContactedGravity(float DeltaTime);
 
 	
@@ -161,8 +166,8 @@ public:
 	// void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
 	// void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
 	void SetContactedWith(bool bIsContactedWith);
-	void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector;}
-	bool GetContactedWith() {return bContactedWithFloor || bContactedWithLevelSphere;}
+	void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
+	bool GetContactedWith() {return bContactedWithFloor || bContactedWithLevelSphere || bContactedWithSphereFloor;}
 	int32 GetGravitiesSize() {return Gravities.Num(); }
 	void AddToGravities(FVector GravityToAdd) {Gravities.Add(GravityToAdd);}
 	void RemoveFromGravities(FVector GravityToRemove) 	{Gravities.Remove(GravityToRemove);}

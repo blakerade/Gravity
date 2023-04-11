@@ -1,18 +1,16 @@
--Find gravity is a one time function. Velocity/Distance to get which one we will commit to.
-
--Put legs down when bMagnitize is active.
+-BUG-Switching to Magnitized while against a wall can remove a gravity from array for some reason
 
 -Hud flashes first time gravity is availible.
 
 -Machine combat: basic assualt rifle and a grenade launcher possibly.
+
+-Add a way to be drawn towards the center of a floor 
 
 -Cylinder floors?
 
 -Smooth of walking in sphere by looking at how walking on sphere works.
 
 -Animations are complete first draft trash.
-
--Leaving last gravity turns off Magnitize (should probably be switched to leave it on).
 
 -Increase boost speed.
 
@@ -23,5 +21,3 @@
 -Figure out texture streaming warning nonsense.
 
 -Figure out locking rotation when on a floor so we can use stairs/ramps.
-
--Air Move in basepawn can probably be moved to the main move function with a Axis3D input

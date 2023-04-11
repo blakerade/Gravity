@@ -58,5 +58,5 @@ protected:
 private:
 	
 public:
-	
+	FVector GetFloorGravity() { return FlooringGravity; }
 };
