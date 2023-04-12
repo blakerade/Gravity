@@ -68,26 +68,26 @@ protected:
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float ForwardSpeed = 1.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float BackwardsSpeed = 1.f;
+	float BackwardsSpeed = 0.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float LateralSpeed = 1.f;
+	float LateralSpeed = 0.5f;
 	
 	void AirMove(const FInputActionValue& ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirSpeed = 100.f;
+	float AirSpeed = 200.f;
 	
 	void Look(const FInputActionValue& ActionValue);
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirRotationSpeed = 100.f;
+	float AirRotationSpeed = 20.f;
 
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirForwardRollSpeed = 10.f;
+	float AirForwardRollSpeed = 190000.f;
 	
 	void Jump(const FInputActionValue& ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float JumpVelocity = 25000.f;
+	float JumpVelocity = 40000.f;
 	
 	void Crouch(const FInputActionValue& ActionValue);
 	
@@ -99,7 +99,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostCurrentVelocityReduction = 2.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float BoostSpeed = 50000.f;
+	float BoostSpeed = 55000.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostRechargeRate = 5.f;
 	bool bCanBoost = true;
@@ -117,11 +117,11 @@ protected:
 	
 	virtual void PerformGravity(float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Gravity)
-	float SphereGravityStrength = 10000.f;
+	float SphereGravityStrength = 3000.f;
 	UPROPERTY(EditAnywhere, Category=Gravity)
-	float SphereFloorGravityStrength = 3000.f;
+	float SphereFloorGravityStrength = 30.f;
 	UPROPERTY(EditAnywhere, Category=Gravity)
-	float SphereFloorContactedForceCorrection = 3000.f;
+	float SphereFloorContactedForceCorrection = 300000.f;
 	
 	UFUNCTION()
 	void OnFloorHit(UPrimitiveComponent* HitComponent,
@@ -131,7 +131,7 @@ protected:
 		const FHitResult& Hit);
 
 	UPROPERTY(EditAnywhere)
-	float KnockBackImpulse = 1.f;
+	float KnockBackImpulse = 1.75f;
 
 private:
 	UPROPERTY(VisibleAnywhere)
@@ -158,7 +158,7 @@ private:
 	void IsThereACloserSphereFloor(bool bHaveAFloorBase, float& InAndOutGravityDistanceCheck, bool& OutSphereFloorOverride);
 	void OrientToGravity(FVector CurrentGravity, float DeltaTime, float DistanceToGravity);
 	UPROPERTY(EditAnywhere, Category = Movement)
-	float RotationSpeedDampener = 20.f;
+	float RotationSpeedDampener = 100.f;
 	void SphereFloorContactedGravity(float DeltaTime);
 
 	

@@ -170,7 +170,7 @@ void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 	if(GetContactedWith() && bIsMagnetized)
 	{
 		SetContactedWith(false);
-		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
+		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity * ActionValue.Get<float>());
 		//Commented out because we no longer add a constraint on landing, could change in the future
 		// Capsule->SetConstraintMode(EDOFMode::None);
 		Capsule->SetLinearDamping(AirFriction);
@@ -185,7 +185,7 @@ void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 {
 	if(GetContactedWith())
 	{
-		Jump(1.f);
+		Jump(0.25f);
 	}
 	
 	bIsMagnetized = !bIsMagnetized;

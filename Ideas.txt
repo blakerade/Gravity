@@ -1,8 +1,8 @@
--BUG-Switching to Magnitized while against a wall can remove a gravity from array for some reason
+-BUG-Switching to Magnitized while against a wall can remove a gravity from array for some reason/DuckTaped by making gravity triggers smaller
+
+-EveryFloor Does not need to be magnitiziable, help with level building
 
 -Hud flashes first time gravity is availible.
-
--Machine combat: basic assualt rifle and a grenade launcher possibly.
 
 -Add a way to be drawn towards the center of a floor 
 
@@ -13,8 +13,6 @@
 -Animations are complete first draft trash.
 
 -Increase boost speed.
-
--Change Yaw in air to being turn by torque and not AddActorRotation.
 
 -GameMode where there is a ball that getes pushed to other base (hole in sphere).
 
