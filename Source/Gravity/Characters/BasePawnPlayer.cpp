@@ -122,10 +122,10 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 {
 	const FVector2D Value = ActionValue.Get<FVector2D>();
 	
-	//Have to Rotate the actor without controller because controller will only rotate in World coordinates
+	//Have to Rotate the actor without controller because controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
 	AddActorLocalRotation(FRotator(0.f,Value.X,0.f));
 	
-	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates
+	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
 	const float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
 	if(SpringArmPitch <= -75.f)
 	{
@@ -293,8 +293,11 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity, bool& OutI
 			{
 				//Reach out in each floors gravity to find which one is the closest
 				FHitResult HitResult;
-				World->LineTraceSingleByChannel(HitResult, GetActorLocation(), GetActorLocation() + (GravityToCheck), ECC_GameTraceChannel1);
-				DrawDebugLine(World, GetActorLocation(), GetActorLocation() +(GravityToCheck), FColor::Red, false, 3.f);
+				float FeetLocation = Capsule->GetScaledCapsuleHalfHeight();
+				FVector FeetVector = GetActorLocation() - (GetActorUpVector() * FeetLocation);
+				World->LineTraceSingleByChannel(HitResult, FeetVector, FeetVector +  (GravityToCheck), ECC_GameTraceChannel1);
+				DrawDebugLine(World, FeetVector, FeetVector +(GravityToCheck), FColor::Red, false, 3.f);
+				DrawDebugPoint(World, FeetVector, 24.f, FColor::Green, false, 3.f);
 				if(HitResult.bBlockingHit)
 				{
 					//If we already have a gravity set as the current closest
@@ -444,14 +447,16 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 		{
 			if(Floor->GetFloorGravity() == CurrentGravity || Floor->GetFloorGravity() == -CurrentGravity)
 			{
-				// if(FVector::DotProduct(-GetActorUpVector(), CurrentGravity.GetSafeNormal()) < 0.7f)
-				// {
-				// 	Capsule->AddImpulse(NormalImpulse * KnockBackImpulse);
-				// 	ZeroOutCurrentGravity();
-				// 	// Capsule->AddTorqueInRadians(FVector(0.f, 0.f, 45.f));
-				// }
-				// else
-				// {
+				if(FVector::DotProduct(-GetActorUpVector(), CurrentGravity.GetSafeNormal()) < 0.7f)
+				{
+					Magnetize(1.f);
+					ZeroOutCurrentGravity();
+					Capsule->AddImpulse(NormalImpulse * KnockBackImpulse);
+					Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+					// Capsule->AddTorqueInRadians(FVector(0.f, 0.f, 45.f));
+				}
+				else
+				{
 					//If the Rinterpto isn't done we still need to be rotated corrected when we land
 					SetActorRotation(FeetToGravity.Rotator());
 					//Important bool for other functionality
@@ -460,7 +465,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 					Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 					//Set damping to a high value so that when we are walking it doesn't feel like we are skating
 					Capsule->SetLinearDamping(FloorFriction);
-				//}
+				}
 			}
 		}
 	}
