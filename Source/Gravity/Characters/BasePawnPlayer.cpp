@@ -122,8 +122,15 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 {
 	const FVector2D Value = ActionValue.Get<FVector2D>();
 	
-	//Have to Rotate the actor without controller because controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
-	AddActorLocalRotation(FRotator(0.f,Value.X,0.f));
+	if(GetContactedWith())
+	{
+		//Have to Rotate the actor without controller because controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
+		AddActorLocalRotation(FRotator(0.f,Value.X,0.f));
+	}
+	else
+	{
+		Capsule->AddTorqueInDegrees(GetActorUpVector() * AirRotationSpeed * Value.X, NAME_None, true);
+	}
 	
 	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
 	const float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;

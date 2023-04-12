@@ -78,6 +78,8 @@ protected:
 	float AirSpeed = 100.f;
 	
 	void Look(const FInputActionValue& ActionValue);
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float AirRotationSpeed = 100.f;
 
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirForwardRollSpeed = 10.f;
