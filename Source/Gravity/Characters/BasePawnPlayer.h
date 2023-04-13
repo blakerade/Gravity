@@ -8,6 +8,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "BasePawnPlayer.generated.h"
 
+class AFloorBase;
 struct FHUDPackage;
 class ASphereFloorBase;
 class AGravitySphere;
@@ -143,7 +144,7 @@ private:
 	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
 	bool bHaveAGravity = false;
 
-	TArray<FVector> Gravities;
+	TArray<AFloorBase*> FloorGravities;
 	TArray<ASphereFloorBase*> SphereFloors;
 
 	bool bContactedWithFloor = false;
@@ -161,7 +162,7 @@ private:
 	void FindSphere();
 	void FindClosestGravity(float& OutDistanceToGravity, bool& OutIsAFloorBase);
 	void IsThereACloserSphereFloor(bool bHaveAFloorBase, float& InAndOutGravityDistanceCheck, bool& OutSphereFloorOverride);
-	void OrientToGravity(FVector CurrentGravity, float DeltaTime, float DistanceToGravity);
+	void OrientToGravity(FVector CurrentGravity, float DeltaTime, float DistanceToGravity, bool bIsThereAFloor);
 	UPROPERTY(EditAnywhere, Category = Movement)
 	float RotationSpeedDampener = 100.f;
 	void SphereFloorContactedGravity(float DeltaTime);
@@ -175,13 +176,14 @@ public:
 	void SetContactedWith(bool bIsContactedWith);
 	void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
 	bool GetContactedWith() {return bContactedWithFloor || bContactedWithLevelSphere || bContactedWithSphereFloor;}
-	int32 GetGravitiesSize() {return Gravities.Num(); }
-	void AddToGravities(FVector GravityToAdd) {Gravities.Add(GravityToAdd);}
-	void RemoveFromGravities(FVector GravityToRemove) 	{Gravities.Remove(GravityToRemove);}
+	int32 GetGravitiesSize() {return FloorGravities.Num(); }
+	void AddToFloorGravities(AFloorBase* GravityToAdd) {FloorGravities.Add(GravityToAdd);}
+	void RemoveFromFloorGravities(AFloorBase* GravityToRemove) 	{FloorGravities.Remove(GravityToRemove);}
 	int32 GetSpheresSize() {return SphereFloors.Num(); }
 	void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
 	void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
 	float GetSpringArmPitch() { return SpringArm->GetRelativeRotation().Pitch; }
 	bool GetIsMagnitized() {return bIsMagnetized;}
 	void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
+	void SetbIsMagnitized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 };

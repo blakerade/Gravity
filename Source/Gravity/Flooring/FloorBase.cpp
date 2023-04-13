@@ -10,8 +10,6 @@ AFloorBase::AFloorBase()
 {
 	GravityTrigger = CreateDefaultSubobject<UBoxComponent>("Gravity Trigger");
 	GravityTrigger->SetupAttachment(RootComponent);
-	BottomGravityTrigger = CreateDefaultSubobject<UBoxComponent>("BottomGravityTrigger");
-	BottomGravityTrigger->SetupAttachment(RootComponent);
 }
 
 void AFloorBase::BeginPlay()
@@ -22,8 +20,6 @@ void AFloorBase::BeginPlay()
 	{
 		GravityTrigger->OnComponentBeginOverlap.AddDynamic(this, &AFloorBase::SetPawnGravity);
 		GravityTrigger->OnComponentEndOverlap.AddDynamic(this, &AFloorBase::RemovePawnGravity);
-		BottomGravityTrigger->OnComponentBeginOverlap.AddDynamic(this, &AFloorBase::SetPawnGravityForBottom);
-		BottomGravityTrigger->OnComponentEndOverlap.AddDynamic(this, &AFloorBase::RemovePawnGravityForBottom);
 	}
 	FlooringGravity = RootComponent->GetUpVector() * -GravityStrength;
 	
@@ -33,15 +29,7 @@ void AFloorBase::SetPawnGravity(UPrimitiveComponent* OverlappedComponent, AActor
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		PawnPlayer->AddToGravities(FlooringGravity);
-	}
-}
-
-void AFloorBase::SetPawnGravityForBottom(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
-{
-	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
-	{
-		PawnPlayer->AddToGravities(-FlooringGravity);
+		PawnPlayer->AddToFloorGravities(this);
 	}
 }
 
@@ -49,26 +37,15 @@ void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AAc
 {
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
-		PawnPlayer->RemoveFromGravities(FlooringGravity);
+		PawnPlayer->RemoveFromFloorGravities(this);
 		PawnPlayer->SetHaveAGravity(false);
 		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetContactedWith(false);
+			PawnPlayer->SetbIsMagnitized(false);
 		}
 	}
 }
 
-void AFloorBase::RemovePawnGravityForBottom(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
-	{
-		PawnPlayer->RemoveFromGravities(-FlooringGravity);
-		PawnPlayer->SetHaveAGravity(false);
-		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
-		{
-			PawnPlayer->SetContactedWith(false);
-		}
-	}
-}
 
 

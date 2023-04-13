@@ -54,8 +54,7 @@ void ABasePawnPlayer::BeginPlay()
 void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + CurrentGravity, FColor::Blue);
+	
 	PerformGravity(DeltaTime);
 	PerformPlayerMovement();
 	FindSphere();
@@ -195,16 +194,14 @@ void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 		ZeroOutCurrentGravity();
 		SetContactedWith(false);
 	}
-	else if(Gravities.Num() != 0 || SphereFloors.Num() != 0)
+	else if(FloorGravities.Num() != 0 || SphereFloors.Num() != 0)
 	{
 		if(Capsule)
 		{
 			Capsule->SetAllPhysicsLinearVelocity(GetVelocity()/2.f);
 			Capsule->SetAllPhysicsAngularVelocityInRadians(Capsule->GetPhysicsAngularVelocityInRadians()/2.f);
 		}
-		
 	}
-
 }
 
 void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
@@ -286,20 +283,20 @@ void ABasePawnPlayer::PerformGravity(float DeltaTime)
 		{
 			//Pull towards the closet floor
 			Capsule->AddForce(CurrentGravity);
-			OrientToGravity(CurrentGravity, DeltaTime, GravityDistance);
+			OrientToGravity(CurrentGravity, DeltaTime, GravityDistance, bHaveAGravity);
 		}
 		else if(bHaveAGravity && bIsASphereFloor)
 		{
 			//Pull towards the center of sphere floor
 			Capsule->AddForce(CurrentGravity * SphereFloorGravityStrength);
-			OrientToGravity(CurrentGravity, DeltaTime, GravityDistance);
+			OrientToGravity(CurrentGravity, DeltaTime, GravityDistance, bHaveAGravity);
 		}
 		else if(bIsInsideSphere)
 		{
 			//Push us away from the center of the sphere
 			const FVector AwayFromCenter = GetActorLocation() -SphereCenter;
 			Capsule->AddForce(AwayFromCenter.GetSafeNormal() * SphereGravityStrength);
-			OrientToGravity(AwayFromCenter, DeltaTime, GravityDistance);
+			OrientToGravity(AwayFromCenter, DeltaTime, GravityDistance, bHaveAGravity);
 		}
 	}
 }
@@ -307,13 +304,13 @@ void ABasePawnPlayer::PerformGravity(float DeltaTime)
 void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity, bool& OutIsAFloorBase)
 {
 	//Have any gravity triggers added themselves to the gravity array
-	if(Gravities.Num() > 0)
+	if(FloorGravities.Num() > 0)
 	{
 		FVector ClosestGravity;
 		float DistanceToClosestGravity = 0;
 		bool bHaveAHit = false;
 		const UWorld* World = GetWorld();
-		for(FVector GravityToCheck: Gravities)
+		for(AFloorBase* GravityToCheck: FloorGravities)
 		{
 			if(World)
 			{
@@ -321,8 +318,8 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity, bool& OutI
 				FHitResult HitResult;
 				float FeetLocation = Capsule->GetScaledCapsuleHalfHeight();
 				FVector FeetVector = GetActorLocation() - (GetActorUpVector() * FeetLocation);
-				World->LineTraceSingleByChannel(HitResult, FeetVector, FeetVector +  (GravityToCheck), ECC_GameTraceChannel1);
-				DrawDebugLine(World, FeetVector, FeetVector +(GravityToCheck), FColor::Red, false, 3.f);
+				World->LineTraceSingleByChannel(HitResult, FeetVector, FeetVector +  (GravityToCheck->GetFloorGravity()), ECC_GameTraceChannel1);
+				DrawDebugLine(World, FeetVector, FeetVector +(GravityToCheck->GetFloorGravity()), FColor::Red, false, 3.f);
 				DrawDebugPoint(World, FeetVector, 24.f, FColor::Green, false, 3.f);
 				if(HitResult.bBlockingHit)
 				{
@@ -335,7 +332,7 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity, bool& OutI
 							//Check if this new hit is closer than the current closest gravity and set it as the new closest gravity if so
 							if(HitResult.Distance < DistanceToClosestGravity)
 							{
-								ClosestGravity = GravityToCheck;
+								ClosestGravity = GravityToCheck->GetFloorGravity();
 								//set the distance to this new closest gravity for future checks
 								OutDistanceToGravity = HitResult.Distance;
 								//Set the actual variable used for pulling towards a floor
@@ -348,7 +345,7 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity, bool& OutI
 						{
 							//this is the first hit we have so set it as the closest gravity
 							DistanceToClosestGravity = HitResult.Distance;
-							ClosestGravity = GravityToCheck;
+							ClosestGravity = GravityToCheck->GetFloorGravity();
 							bHaveAHit = true;
 							OutDistanceToGravity = HitResult.Distance;
 							CurrentGravity = ClosestGravity;
@@ -451,22 +448,43 @@ void ABasePawnPlayer::FindSphere()
 	}
 }
 
-void ABasePawnPlayer::OrientToGravity(FVector GravityToOrientTo, float DeltaTime, float DistanceToGravity)
+void ABasePawnPlayer::OrientToGravity(FVector GravityToOrientTo, float DeltaTime, float DistanceToGravity,  bool bIsThereAFloor)
 {
-	//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
-	if(FVector::DotProduct(GetVelocity(), GravityToOrientTo) >= 1.f)
+	if(bIsThereAFloor)
 	{
-		FeetToGravity = FRotationMatrix::MakeFromZY(-GravityToOrientTo, GetActorRightVector());
-		FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
-		SetActorRotation(InterpRotation);
+		//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
+		if(FVector::DotProduct(GetVelocity(), GravityToOrientTo) >= 1.f)
+		{
+			FeetToGravity = FRotationMatrix::MakeFromZY(-GravityToOrientTo, GetActorRightVector());
+			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
+			SetActorRotation(InterpRotation);
+		}
+		else
+		{
+			//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
+			FeetToGravity = FRotationMatrix::MakeFromZX(-GravityToOrientTo, GetActorForwardVector());
+			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
+			SetActorRotation(InterpRotation);
+		}
 	}
 	else
 	{
-		//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
-		FeetToGravity = FRotationMatrix::MakeFromZX(-GravityToOrientTo, GetActorForwardVector());
-		FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
-		SetActorRotation(InterpRotation);
+		//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
+		if(FVector::DotProduct(GetVelocity(), GravityToOrientTo) >= 1.f)
+		{
+			FeetToGravity = FRotationMatrix::MakeFromZY(-GravityToOrientTo, GetActorRightVector());
+			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 0.15f);
+			SetActorRotation(InterpRotation);
+		}
+		else
+		{
+			//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
+			FeetToGravity = FRotationMatrix::MakeFromZX(-GravityToOrientTo, GetActorForwardVector());
+			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 0.15f);
+			SetActorRotation(InterpRotation);
+		}
 	}
+
 }
 
 void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -535,7 +553,7 @@ void ABasePawnPlayer::SphereFloorContactedGravity(float DeltaTime)
 		//Pull towards the center of sphere floor while we are contacted with the floor
 		const FVector ToSphereGravity = (SphereContactedWith->GetActorLocation() - GetActorLocation()).GetSafeNormal();
 		Capsule->AddForce(ToSphereGravity * SphereFloorContactedForceCorrection);
-		OrientToGravity(ToSphereGravity, DeltaTime, 1.f);
+		OrientToGravity(ToSphereGravity, DeltaTime, 1.f, bHaveAGravity);
 	}
 }
 void ABasePawnPlayer::SetContactedWith(bool bIsContactedWith)

@@ -9,7 +9,6 @@
 ASphereFloorBase::ASphereFloorBase()
 {
 	GravityTrigger->DestroyComponent();
-	BottomGravityTrigger->DestroyComponent();
 	SphereGravityTrigger = CreateDefaultSubobject<USphereComponent>(TEXT("GravityTrigger"));
 	SphereGravityTrigger->SetupAttachment(RootComponent);
 }
@@ -37,9 +36,5 @@ void ASphereFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponen
 	{
 		PawnPlayer->RemoveFromSphere(this);
 		PawnPlayer->SetHaveAGravity(false);
-		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
-		{
-			PawnPlayer->SetContactedWith(false);
-		}
 	}
 }
