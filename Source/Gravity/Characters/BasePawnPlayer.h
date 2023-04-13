@@ -96,6 +96,11 @@ protected:
 	bool bIsMagnetized = false;
 	
 	void Boost(const FInputActionValue& ActionValue);
+	void Boost_Internal();
+	void ContactedFloorMagnitizeDelay();
+	FTimerHandle MagnitizeDealyForBoost;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float MagnitizeDelay = 3.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostCurrentVelocityReduction = 2.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -178,4 +183,5 @@ public:
 	void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
 	float GetSpringArmPitch() { return SpringArm->GetRelativeRotation().Pitch; }
 	bool GetIsMagnitized() {return bIsMagnetized;}
+	void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
 };

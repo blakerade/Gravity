@@ -212,27 +212,46 @@ void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
 	bCanBoost = BoostCount >= 2 ? false : true;
 	if(bCanBoost)
 	{
-		Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
-		if(ControlInputVector.Size() != 0.f)
+		if(!GetContactedWith())
 		{
-			Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-			Capsule->AddImpulse(ControlInputVector * BoostSpeed);
-			BoostCount++;
-			GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
+			Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
+			Boost_Internal();
 		}
 		else
 		{
-			Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-			Capsule->AddImpulse(GetVelocity().GetSafeNormal() * BoostSpeed);
-			BoostCount++;
-			GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
+			Magnetize(1.f);
+			Boost_Internal();
+			GetWorldTimerManager().SetTimer(MagnitizeDealyForBoost, this, &ABasePawnPlayer::ContactedFloorMagnitizeDelay, MagnitizeDelay);
 		}
+	}
+}
+
+void ABasePawnPlayer::Boost_Internal()
+{
+	if(ControlInputVector.Size() != 0.f)
+	{
+		Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		Capsule->SetAllPhysicsLinearVelocity(ControlInputVector * BoostSpeed);
+		BoostCount++;
+		GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
+	}
+	else
+	{
+		Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		Capsule->SetAllPhysicsLinearVelocity(GetVelocity().GetSafeNormal() * BoostSpeed);
+		BoostCount++;
+		GetWorldTimerManager().SetTimer(BoostTimerHandle, this, &ABasePawnPlayer::BoostCountConsumer, BoostRechargeRate);
 	}
 }
 
 void ABasePawnPlayer::BoostCountConsumer()
 {
 	BoostCount--;
+}
+
+void ABasePawnPlayer::ContactedFloorMagnitizeDelay()
+{
+	Magnetize(1.f);
 }
 
 void ABasePawnPlayer::PerformPlayerMovement()
@@ -307,31 +326,35 @@ void ABasePawnPlayer::FindClosestGravity(float& OutDistanceToGravity, bool& OutI
 				DrawDebugPoint(World, FeetVector, 24.f, FColor::Green, false, 3.f);
 				if(HitResult.bBlockingHit)
 				{
-					//If we already have a gravity set as the current closest
-					if(bHaveAHit)
+					//Check to make sure we dont have a non-gravity floor in the way
+					if(AFloorBase* HitActor = Cast<AFloorBase>(HitResult.GetActor()))
 					{
-						//Check if this new hit is closer than the current closest gravity and set it as the new closest gravity if so
-						if(HitResult.Distance < DistanceToClosestGravity)
+						//If we already have a gravity set as the current closest
+						if(bHaveAHit)
 						{
-							ClosestGravity = GravityToCheck;
-							//set the distance to this new closest gravity for future checks
-							OutDistanceToGravity = HitResult.Distance;
-							//Set the actual variable used for pulling towards a floor
-							CurrentGravity = ClosestGravity;
-							DistanceToClosestGravity = HitResult.Distance;
-						}
+							//Check if this new hit is closer than the current closest gravity and set it as the new closest gravity if so
+							if(HitResult.Distance < DistanceToClosestGravity)
+							{
+								ClosestGravity = GravityToCheck;
+								//set the distance to this new closest gravity for future checks
+								OutDistanceToGravity = HitResult.Distance;
+								//Set the actual variable used for pulling towards a floor
+								CurrentGravity = ClosestGravity;
+								DistanceToClosestGravity = HitResult.Distance;
+							}
 
-					}
-					else
-					{
-						//this is the first hit we have so set it as the closest gravity
-						DistanceToClosestGravity = HitResult.Distance;
-						ClosestGravity = GravityToCheck;
-						bHaveAHit = true;
-						OutDistanceToGravity = HitResult.Distance;
-						CurrentGravity = ClosestGravity;
-						OutIsAFloorBase = true;
-						bHaveAGravity = true;
+						}
+						else
+						{
+							//this is the first hit we have so set it as the closest gravity
+							DistanceToClosestGravity = HitResult.Distance;
+							ClosestGravity = GravityToCheck;
+							bHaveAHit = true;
+							OutDistanceToGravity = HitResult.Distance;
+							CurrentGravity = ClosestGravity;
+							OutIsAFloorBase = true;
+							bHaveAGravity = true;
+						}
 					}
 				}
 			}

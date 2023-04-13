@@ -36,6 +36,7 @@ void ASphereFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponen
 	if(ABasePawnPlayer* PawnPlayer = Cast<ABasePawnPlayer>(OtherActor))
 	{
 		PawnPlayer->RemoveFromSphere(this);
+		PawnPlayer->SetHaveAGravity(false);
 		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetContactedWith(false);
