@@ -2,4 +2,15 @@
 
 
 #include "GravityPlayerController.h"
+#include "Gravity/HUD/ShooterHUD.h"
 
+void AGravityPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	ShooterHUD = Cast<AShooterHUD>(GetHUD());
+	if(ShooterHUD)
+	{
+		ShooterHUD->AddShooterOverlay();
+	}
+}

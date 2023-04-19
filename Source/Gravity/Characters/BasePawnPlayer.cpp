@@ -9,6 +9,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "VectorTypes.h"
 #include "Chaos/SpatialAccelerationCollection.h"
+#include "Components/BoxComponent.h"
+#include "Gravity/Components/ShooterCombatComponent.h"
 #include "Gravity/Flooring/FloorBase.h"
 #include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
@@ -26,6 +28,39 @@ ABasePawnPlayer::ABasePawnPlayer()
 	SpringArm->SetupAttachment(Skeleton);
 	Camera = CreateDefaultSubobject<UCameraComponent>("Camera");
 	Camera->SetupAttachment(SpringArm);
+	Combat = CreateDefaultSubobject<UShooterCombatComponent>(TEXT("CombatComponent"));
+
+	//Hitboxes
+	Head = CreateDefaultSubobject<UBoxComponent>(TEXT("Head"));
+	Head->SetupAttachment(Skeleton, FName("Head"));
+	Spine2 = CreateDefaultSubobject<UBoxComponent>(TEXT("Spine2"));
+	Spine2->SetupAttachment(Skeleton, FName("Spine2"));
+	Hips = CreateDefaultSubobject<UBoxComponent>(TEXT("Hips"));
+	Hips->SetupAttachment(Skeleton, FName("Hips"));
+	RightUpLeg = CreateDefaultSubobject<UBoxComponent>(TEXT("RightUpLeg"));
+	RightUpLeg->SetupAttachment(Skeleton, FName("RightUpLeg"));
+	LeftUpLeg = CreateDefaultSubobject<UBoxComponent>(TEXT("LeftUpLeg"));
+	LeftUpLeg->SetupAttachment(Skeleton, FName("LeftUpLeg"));
+	RightLeg = CreateDefaultSubobject<UBoxComponent>(TEXT("RightLeg"));
+	RightLeg->SetupAttachment(Skeleton, FName("RightLeg"));
+	LeftLeg = CreateDefaultSubobject<UBoxComponent>(TEXT("LeftLeg"));
+	LeftLeg->SetupAttachment(Skeleton, FName("LeftLeg"));
+	RightFoot = CreateDefaultSubobject<UBoxComponent>(TEXT("RightFoot"));
+	RightFoot->SetupAttachment(Skeleton, FName("RightFoot"));
+	LeftFoot = CreateDefaultSubobject<UBoxComponent>(TEXT("LeftFoot"));
+	LeftFoot->SetupAttachment(Skeleton, FName("LeftFoot"));
+	RightArm = CreateDefaultSubobject<UBoxComponent>(TEXT("RightArm"));
+	RightArm->SetupAttachment(Skeleton, FName("RightArm"));
+	LeftArm = CreateDefaultSubobject<UBoxComponent>(TEXT("LeftArm"));
+	LeftArm->SetupAttachment(Skeleton, FName("LeftArm"));
+	RightForeArm = CreateDefaultSubobject<UBoxComponent>(TEXT("RightForeArm"));
+	RightForeArm->SetupAttachment(Skeleton, FName("RightForeArm"));
+	LeftForeArm = CreateDefaultSubobject<UBoxComponent>(TEXT("LeftForeArm"));
+	LeftForeArm->SetupAttachment(Skeleton, FName("LeftForeArm"));
+	RightHand = CreateDefaultSubobject<UBoxComponent>(TEXT("RightHand"));
+	RightHand->SetupAttachment(Skeleton, FName("RightHand"));
+	LeftHand = CreateDefaultSubobject<UBoxComponent>(TEXT("LeftHand"));
+	LeftHand->SetupAttachment(Skeleton, FName("LeftHand"));
 }
 
 void ABasePawnPlayer::BeginPlay()
@@ -42,6 +77,7 @@ void ABasePawnPlayer::BeginPlay()
 			Subsystem->ClearAllMappings();
 
 			// Add each mapping context, along with their priority values. Higher values outprioritize lower values.
+			Subsystem->AddMappingContext(CharacterMovementMapping, 1.f);
 			Subsystem->AddMappingContext(CharacterMovementMapping, 1.f);
 		}
 	}
@@ -249,6 +285,11 @@ void ABasePawnPlayer::BoostCountConsumer()
 void ABasePawnPlayer::ContactedFloorMagnitizeDelay()
 {
 	Magnetize(1.f);
+}
+
+void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
+{
+	
 }
 
 void ABasePawnPlayer::PerformPlayerMovement()

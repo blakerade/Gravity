@@ -3,10 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/HUD.h"
-#include "BasePlayerHUD.generated.h"
+#include "Blueprint/UserWidget.h"
+#include "UShooterOverlay.generated.h"
+
 
 class UTexture2D;
+class UTextBlock;
 
 USTRUCT(BlueprintType)
 struct FHUDPackage
@@ -22,12 +24,24 @@ public:
 	FLinearColor CrosshairsColor;
 	
 };
+
 /**
  * 
  */
 UCLASS()
-class GRAVITY_API ABasePlayerHUD : public AHUD
+class GRAVITY_API UShooterOverlay : public UUserWidget
 {
 	GENERATED_BODY()
+
+public:
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* PickupText;
+	
+protected:
+
+private:
+
+public:
+	
 	
 };

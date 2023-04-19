@@ -8,6 +8,8 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "BasePawnPlayer.generated.h"
 
+class AWeaponBase;
+class UBoxComponent;
 class AFloorBase;
 struct FHUDPackage;
 class ASphereFloorBase;
@@ -17,6 +19,7 @@ class USpringArmComponent;
 class UCapsuleComponent;
 class UInputAction;
 class UInputMappingContext;
+class UShooterCombatComponent;
 
 UCLASS()
 class GRAVITY_API ABasePawnPlayer : public APawn
@@ -28,9 +31,40 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	
 protected:
 	virtual void BeginPlay() override;
+	
+	//Hitboxes
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* Head;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* Spine2;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* Hips;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* RightUpLeg;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* LeftUpLeg;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* RightLeg;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* LeftLeg;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* RightFoot;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* LeftFoot;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* RightArm;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* LeftArm;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* RightForeArm;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* LeftForeArm;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* RightHand;
+	UPROPERTY(EditAnywhere)
+	UBoxComponent* LeftHand;
 	
 	//Components
 	UPROPERTY(EditAnywhere)
@@ -41,6 +75,8 @@ protected:
 	USpringArmComponent* SpringArm;
 	UPROPERTY(EditAnywhere)
 	UCameraComponent* Camera;
+	UPROPERTY(EditAnywhere)
+	UShooterCombatComponent* Combat;
 
 	//Inputs Bindings
 	UPROPERTY(EditAnywhere)
@@ -58,7 +94,11 @@ protected:
 	UPROPERTY(EditAnywhere)
 	UInputAction* BoostAction;
 	UPROPERTY(EditAnywhere)
+	UInputAction* EquipAction;
+	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterMovementMapping;
+	UPROPERTY(EditAnywhere)
+	UInputMappingContext* CharacterCombatMapping;
 
 	//Input Functions
 	void Move(const FInputActionValue& ActionValue);
@@ -118,6 +158,8 @@ protected:
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirFriction = 0.01f;
+
+	void Equip(const FInputActionValue& ActionValue);
 
 	virtual void PerformPlayerMovement();
 	
@@ -186,4 +228,5 @@ public:
 	bool GetIsMagnitized() {return bIsMagnetized;}
 	void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
 	void SetbIsMagnitized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
+	USkeletalMeshComponent* GetMesh() { return Skeleton; }
 };

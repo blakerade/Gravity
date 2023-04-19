@@ -6,6 +6,8 @@
 #include "GameFramework/PlayerController.h"
 #include "GravityPlayerController.generated.h"
 
+class AShooterHUD;
+
 /**
  * 
  */
@@ -13,5 +15,16 @@ UCLASS()
 class GRAVITY_API AGravityPlayerController : public APlayerController
 {
 	GENERATED_BODY()
+
+public:
+	AShooterHUD* ShooterHUD;
 	
+protected:
+	virtual void BeginPlay() override;
+	
+	
+private:
+	
+	
+public:
 };
