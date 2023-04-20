@@ -6,6 +6,14 @@
 #include "UShooterOverlay.h"
 #include "Blueprint/UserWidget.h"
 
+
+
+void AShooterHUD::DrawHUD()
+{
+	Super::DrawHUD();
+	
+}
+
 void AShooterHUD::AddShooterOverlay()
 {
 	APlayerController* PC = GetOwningPlayerController();

@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "WeaponBase.generated.h"
 
+class ABulletBase;
 class UWidgetComponent;
 class USphereComponent;
 
@@ -17,8 +18,22 @@ class GRAVITY_API AWeaponBase : public AActor
 public:	
 	AWeaponBase();
 	virtual void Tick(float DeltaTime) override;
+	//Crosshairs
+	UPROPERTY(EditAnywhere)
+	UTexture2D* CrosshairTop;
+	UPROPERTY(EditAnywhere)
+	UTexture2D* CrosshairBottom;
+	UPROPERTY(EditAnywhere)
+	UTexture2D* CrosshairRight;
+	UPROPERTY(EditAnywhere)
+	UTexture2D* CrosshairLeft;
+	UPROPERTY(EditAnywhere)
+	UTexture2D* CrosshairCenter;
+	
 protected:
 	virtual void BeginPlay() override;
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<ABulletBase> BulletClass;
 
 private:
 	UPROPERTY(EditAnywhere)
@@ -33,6 +48,6 @@ private:
 	void HidePickupWidget(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 	
 public:	
-	
+	void RequestFire();
 
 };

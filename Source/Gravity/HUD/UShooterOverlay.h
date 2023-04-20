@@ -6,24 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "UShooterOverlay.generated.h"
 
-
-class UTexture2D;
 class UTextBlock;
-
-USTRUCT(BlueprintType)
-struct FHUDPackage
-{
-	GENERATED_BODY()
-public:
-	UTexture2D* CrosshairsCenter;
-	UTexture2D* CrosshairsLeft;
-	UTexture2D* CrosshairsRight;
-	UTexture2D* CrosshairsTop;
-	UTexture2D* CrosshairsBottom;
-	float CrosshairSpread;
-	FLinearColor CrosshairsColor;
-	
-};
 
 /**
  * 
@@ -36,6 +19,7 @@ class GRAVITY_API UShooterOverlay : public UUserWidget
 public:
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* PickupText;
+
 	
 protected:
 

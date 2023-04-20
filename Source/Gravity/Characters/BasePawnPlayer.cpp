@@ -14,6 +14,7 @@
 #include "Gravity/Flooring/FloorBase.h"
 #include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
+#include "Gravity/Weapons/WeaponBase.h"
 
 ABasePawnPlayer::ABasePawnPlayer()
 {
@@ -78,7 +79,7 @@ void ABasePawnPlayer::BeginPlay()
 
 			// Add each mapping context, along with their priority values. Higher values outprioritize lower values.
 			Subsystem->AddMappingContext(CharacterMovementMapping, 1.f);
-			Subsystem->AddMappingContext(CharacterMovementMapping, 1.f);
+			Subsystem->AddMappingContext(CharacterCombatMapping, 2.f);
 		}
 	}
 	if(Capsule)
@@ -104,7 +105,16 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	if (UEnhancedInputComponent* PlayerEnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// This calls the handler function on the tick when MyInputAction starts, such as when pressing an action button.
-		if (MoveAction && AirMoveAction && LookAction && JumpAction && CrouchAction && MagnetizeAction && BoostAction)
+		bool bActions = MoveAction &&
+			AirMoveAction &&
+			LookAction &&
+			JumpAction &&
+			CrouchAction &&
+			MagnetizeAction &&
+			BoostAction &&
+			EquipAction &&
+			FireAction;
+		if (bActions)
 		{
 			PlayerEnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Move);
 			PlayerEnhancedInputComponent->BindAction(AirMoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::AirMove);
@@ -113,6 +123,8 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 			PlayerEnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Crouch);
 			PlayerEnhancedInputComponent->BindAction(MagnetizeAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Magnetize);
 			PlayerEnhancedInputComponent->BindAction(BoostAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Boost);
+			PlayerEnhancedInputComponent->BindAction(EquipAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Equip);
+			PlayerEnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Fire);
 		}
 	}
 }
@@ -290,6 +302,15 @@ void ABasePawnPlayer::ContactedFloorMagnitizeDelay()
 void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
 {
 	
+}
+
+void ABasePawnPlayer::Fire(const FInputActionValue& ActionValue)
+{
+	UE_LOG(LogTemp, Warning, TEXT("FireCalled"));
+	if(Combat && Combat->EquippedWeapon)
+	{
+		Combat->EquippedWeapon->RequestFire();
+	}
 }
 
 void ABasePawnPlayer::PerformPlayerMovement()

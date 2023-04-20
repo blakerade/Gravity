@@ -96,6 +96,8 @@ protected:
 	UPROPERTY(EditAnywhere)
 	UInputAction* EquipAction;
 	UPROPERTY(EditAnywhere)
+	UInputAction* FireAction;
+	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterMovementMapping;
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterCombatMapping;
@@ -160,6 +162,7 @@ protected:
 	float AirFriction = 0.01f;
 
 	void Equip(const FInputActionValue& ActionValue);
+	void Fire(const FInputActionValue& ActionValue);
 
 	virtual void PerformPlayerMovement();
 	

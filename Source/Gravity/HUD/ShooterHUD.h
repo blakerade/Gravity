@@ -6,10 +6,27 @@
 #include "GameFramework/HUD.h"
 #include "ShooterHUD.generated.h"
 
+class UTexture2D;
 class UShooterOverlay;
 /**
  * 
  */
+
+USTRUCT(BlueprintType)
+struct FHUDPackage
+{
+	GENERATED_BODY()
+public:
+	UTexture2D* CrosshairCenter;
+	UTexture2D* CrosshairLeft;
+	UTexture2D* CrosshairRight;
+	UTexture2D* CrosshairTop;
+	UTexture2D* CrosshairBottom;
+	float CrosshairSpread;
+	FLinearColor CrosshairColor;
+	
+};
+
 UCLASS()
 class GRAVITY_API AShooterHUD : public AHUD
 {
@@ -17,14 +34,13 @@ class GRAVITY_API AShooterHUD : public AHUD
 
 public:
 	void AddShooterOverlay();
+	virtual void DrawHUD() override;
 	UShooterOverlay* ShooterOverlay;
+	FHUDPackage* HUDPackage;
 	
 protected:
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<UUserWidget> ShooterOverlayClass;
-
-	
-
 	
 private:
 

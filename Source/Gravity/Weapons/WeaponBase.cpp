@@ -3,8 +3,10 @@
 
 #include "WeaponBase.h"
 
+#include "BulletBase.h"
 #include "Components/SphereComponent.h"
 #include "Components/TextBlock.h"
+#include "Engine/SkeletalMeshSocket.h"
 #include "Gravity/Characters/BasePawnPlayer.h"
 #include "Gravity/HUD/ShooterHUD.h"
 #include "Gravity/HUD/UShooterOverlay.h"
@@ -66,6 +68,17 @@ void AWeaponBase::HidePickupWidget(UPrimitiveComponent* OverlappedComponent, AAc
 		{
 			ShooterController->ShooterHUD->ShooterOverlay->PickupText->SetVisibility(ESlateVisibility::Hidden);
 		}
+	}
+}
+
+void AWeaponBase::RequestFire()
+{
+	UE_LOG(LogTemp, Warning, TEXT("FireFromWeapon"));
+	UWorld* World = GetWorld();
+	const USkeletalMeshSocket* Muzzle = WeaponBodyMesh->GetSocketByName(FName("MuzzleFlash"));
+	if(BulletClass && Muzzle && World)
+	{
+		World->SpawnActor<ABulletBase>(BulletClass, Muzzle->GetSocketTransform(WeaponBodyMesh));
 	}
 }
 

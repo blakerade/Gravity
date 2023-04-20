@@ -5,6 +5,8 @@
 
 #include "Engine/SkeletalMeshSocket.h"
 #include "Gravity/Characters/BasePawnPlayer.h"
+#include "Gravity/HUD/ShooterHUD.h"
+#include "Gravity/PlayerController/GravityPlayerController.h"
 #include "Gravity/Weapons/WeaponBase.h"
 
 UShooterCombatComponent::UShooterCombatComponent()
@@ -32,6 +34,21 @@ void UShooterCombatComponent::BeginPlay()
 			WeaponSocket->AttachActor(DefaultWeapon, Shooter->GetMesh());
 			EquippedWeapon = DefaultWeapon;
 		}
+	}
+	SetHUDCrossHairs();
+}
+
+void UShooterCombatComponent::SetHUDCrossHairs()
+{
+	PC = PC == nullptr ? Cast<AGravityPlayerController>(GetWorld()->GetFirstPlayerController()) : PC;
+	ShooterHUD = ShooterHUD == nullptr ? Cast<AShooterHUD>(PC->GetHUD()) : ShooterHUD;
+	if(EquippedWeapon && PC && ShooterHUD && ShooterHUD->HUDPackage)
+	{
+		ShooterHUD->HUDPackage->CrosshairTop = EquippedWeapon->CrosshairTop;
+		ShooterHUD->HUDPackage->CrosshairBottom = EquippedWeapon->CrosshairBottom;
+		ShooterHUD->HUDPackage->CrosshairRight = EquippedWeapon->CrosshairRight;
+		ShooterHUD->HUDPackage->CrosshairLeft = EquippedWeapon->CrosshairLeft;
+		ShooterHUD->HUDPackage->CrosshairCenter = EquippedWeapon->CrosshairCenter;
 	}
 }
 

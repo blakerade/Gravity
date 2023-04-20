@@ -6,6 +6,8 @@
 #include "Components/ActorComponent.h"
 #include "ShooterCombatComponent.generated.h"
 
+class AShooterHUD;
+class AGravityPlayerController;
 class AWeaponBase;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -30,9 +32,13 @@ protected:
 	AWeaponBase* DefaultWeapon;
 	UPROPERTY()
 	AWeaponBase* EquippedWeapon;
+	UPROPERTY()
+	AShooterHUD* ShooterHUD;
+	UPROPERTY()
+	AGravityPlayerController* PC;
 	
 private:
-	
+	void SetHUDCrossHairs();
 public:	
 	
 
