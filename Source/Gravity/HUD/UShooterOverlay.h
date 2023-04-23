@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "UShooterOverlay.generated.h"
 
+class UProgressBar;
 class UTextBlock;
 
 /**
@@ -19,6 +20,8 @@ class GRAVITY_API UShooterOverlay : public UUserWidget
 public:
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* PickupText;
+	UPROPERTY(meta = (BindWidget))
+	UProgressBar* HealthBar;
 
 	
 protected:

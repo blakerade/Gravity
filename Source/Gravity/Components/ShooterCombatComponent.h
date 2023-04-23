@@ -39,8 +39,10 @@ protected:
 	
 private:
 	void SetHUDCrossHairs();
+	void TraceUnderCrosshairs(FHitResult HitResult);
+	FVector HitTarget;
+	
+	
 public:	
 	
-
-		
 };

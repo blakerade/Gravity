@@ -16,8 +16,8 @@ class GRAVITY_API UPlayerAnimInstance : public UAnimInstance
 	GENERATED_BODY()
 
 public:
-	virtual void NativeInitializeAnimation();
-	virtual void NativeUpdateAnimation(float DeltaSeconds);
+	virtual void NativeInitializeAnimation() override;
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 protected:
 	UPROPERTY()
@@ -35,7 +35,7 @@ private:
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
 	float Pitch;
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess))
-	bool bMagnitized;
-	
+	bool bMagnetize;
+
 public:
 };

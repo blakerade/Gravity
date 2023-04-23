@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GravityPlayerController.generated.h"
 
+class ABasePawnPlayer;
 class AShooterHUD;
 
 /**
@@ -17,14 +18,20 @@ class GRAVITY_API AGravityPlayerController : public APlayerController
 	GENERATED_BODY()
 
 public:
-	AShooterHUD* ShooterHUD;
+		UPROPERTY()
+    	AShooterHUD* ShooterHUD;
+    	UPROPERTY()
+    	ABasePawnPlayer* ShooterCharacter;
 	
 protected:
 	virtual void BeginPlay() override;
-	
+	void Tick(float DeltaSeconds) override;
 	
 private:
-	
+	void SetHUDHealth();
+	bool bHUDHealthSet = false;
+	void UpdateShooterHUDHealth();
+	void PollInit();
 	
 public:
 };

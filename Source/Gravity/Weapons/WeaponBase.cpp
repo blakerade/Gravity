@@ -71,14 +71,13 @@ void AWeaponBase::HidePickupWidget(UPrimitiveComponent* OverlappedComponent, AAc
 	}
 }
 
-void AWeaponBase::RequestFire()
+void AWeaponBase::RequestFire(FVector HitTarget)
 {
-	UE_LOG(LogTemp, Warning, TEXT("FireFromWeapon"));
 	UWorld* World = GetWorld();
 	const USkeletalMeshSocket* Muzzle = WeaponBodyMesh->GetSocketByName(FName("MuzzleFlash"));
 	if(BulletClass && Muzzle && World)
 	{
-		World->SpawnActor<ABulletBase>(BulletClass, Muzzle->GetSocketTransform(WeaponBodyMesh));
+		World->SpawnActor<ABulletBase>(BulletClass, Muzzle->GetSocketLocation(WeaponBodyMesh), (HitTarget - Muzzle->GetSocketLocation(WeaponBodyMesh)).Rotation());
 	}
 }
 

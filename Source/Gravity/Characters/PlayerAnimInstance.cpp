@@ -3,9 +3,10 @@
 
 #include "PlayerAnimInstance.h"
 
-#include <string>
-
 #include "BasePawnPlayer.h"
+#include "Engine/SkeletalMeshSocket.h"
+#include "Gravity/Weapons/WeaponBase.h"
+#include "Kismet/KismetMathLibrary.h"
 
 void UPlayerAnimInstance::NativeInitializeAnimation()
 {
@@ -23,16 +24,16 @@ void UPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	if(Player)
 	{
 		Pitch = Player->GetSpringArmPitch();
-		bOnAFloor = Player->GetContactedWith();
+		bOnAFloor = Player->GetContactedWith();	
 		if(bOnAFloor)
 		{
 			FTransform WorldTransform = Player->GetTransform();
 			FVector LocalVeclotiy = WorldTransform.InverseTransformVector(Player->GetVelocity());
-			if(!FMath::IsNearlyZero(LocalVeclotiy.X, 0.4)) ForwardSpeed = LocalVeclotiy.X;
+			if(!FMath::IsNearlyZero(LocalVeclotiy.X, 50.f)) ForwardSpeed = LocalVeclotiy.X;
 			else ForwardSpeed = 0.f;
-			if(!FMath::IsNearlyZero(LocalVeclotiy.Y, 0.4)) LateralSpeed = LocalVeclotiy.Y;
+			if(!FMath::IsNearlyZero(LocalVeclotiy.Y, 50.f)) LateralSpeed = LocalVeclotiy.Y;
 			else LateralSpeed = 0.f;
 		}
-			bMagnitized = Player->GetIsMagnitized();
+		bMagnetize = Player->GetIsMagnitized();
 	}
 }

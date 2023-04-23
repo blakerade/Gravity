@@ -11,6 +11,7 @@
 #include "Chaos/SpatialAccelerationCollection.h"
 #include "Components/BoxComponent.h"
 #include "Gravity/Components/ShooterCombatComponent.h"
+#include "Gravity/Components/ShooterHealthComponent.h"
 #include "Gravity/Flooring/FloorBase.h"
 #include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
@@ -30,8 +31,9 @@ ABasePawnPlayer::ABasePawnPlayer()
 	Camera = CreateDefaultSubobject<UCameraComponent>("Camera");
 	Camera->SetupAttachment(SpringArm);
 	Combat = CreateDefaultSubobject<UShooterCombatComponent>(TEXT("CombatComponent"));
+	Health = CreateDefaultSubobject<UShooterHealthComponent>(TEXT("HealthComponent"));
 
-	//Hitboxes
+	//HitBoxes
 	Head = CreateDefaultSubobject<UBoxComponent>(TEXT("Head"));
 	Head->SetupAttachment(Skeleton, FName("Head"));
 	Spine2 = CreateDefaultSubobject<UBoxComponent>(TEXT("Spine2"));
@@ -78,8 +80,8 @@ void ABasePawnPlayer::BeginPlay()
 			Subsystem->ClearAllMappings();
 
 			// Add each mapping context, along with their priority values. Higher values outprioritize lower values.
-			Subsystem->AddMappingContext(CharacterMovementMapping, 1.f);
-			Subsystem->AddMappingContext(CharacterCombatMapping, 2.f);
+			Subsystem->AddMappingContext(CharacterMovementMapping, 2.f);
+			Subsystem->AddMappingContext(CharacterCombatMapping, 1.f);
 		}
 	}
 	if(Capsule)
@@ -266,7 +268,7 @@ void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
 		{
 			Magnetize(1.f);
 			Boost_Internal();
-			GetWorldTimerManager().SetTimer(MagnitizeDealyForBoost, this, &ABasePawnPlayer::ContactedFloorMagnitizeDelay, MagnitizeDelay);
+			GetWorldTimerManager().SetTimer(MagnetizeDelayForBoost, this, &ABasePawnPlayer::ContactedFloorMagnetizeDelay, MagnetizeDelay);
 		}
 	}
 }
@@ -294,7 +296,7 @@ void ABasePawnPlayer::BoostCountConsumer()
 	BoostCount--;
 }
 
-void ABasePawnPlayer::ContactedFloorMagnitizeDelay()
+void ABasePawnPlayer::ContactedFloorMagnetizeDelay()
 {
 	Magnetize(1.f);
 }
@@ -306,10 +308,9 @@ void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Fire(const FInputActionValue& ActionValue)
 {
-	UE_LOG(LogTemp, Warning, TEXT("FireCalled"));
 	if(Combat && Combat->EquippedWeapon)
 	{
-		Combat->EquippedWeapon->RequestFire();
+		Combat->EquippedWeapon->RequestFire(GetHitTarget());
 	}
 }
 
@@ -626,6 +627,18 @@ void ABasePawnPlayer::SetContactedWith(bool bIsContactedWith)
 		bContactedWithSphereFloor = bIsContactedWith;
 		bContactedWithLevelSphere = bIsContactedWith;
 		Capsule->SetLinearDamping(AirFriction);
+	}
+}
+
+FVector ABasePawnPlayer::GetHitTarget()
+{
+	if(Combat)
+	{
+		return Combat->HitTarget;
+	}
+	else
+	{
+		return FVector::ZeroVector;
 	}
 }
 

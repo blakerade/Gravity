@@ -36,13 +36,14 @@ public:
 	void AddShooterOverlay();
 	virtual void DrawHUD() override;
 	UShooterOverlay* ShooterOverlay;
-	FHUDPackage* HUDPackage;
+	FHUDPackage HUDPackage;
 	
 protected:
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<UUserWidget> ShooterOverlayClass;
 	
 private:
+	void DrawCrosshairs(UTexture2D* Texture, const FVector2d& ViewportCenter, const FVector2D CrosshairSpread, FLinearColor TextureColor);
 
 public:
 	

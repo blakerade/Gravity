@@ -27,6 +27,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	UProjectileMovementComponent* BulletMovement;
 
+	UFUNCTION()
+	void OnBulletHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
 public:	
 
 

@@ -48,6 +48,6 @@ private:
 	void HidePickupWidget(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 	
 public:	
-	void RequestFire();
+	void RequestFire(FVector HitTarget);
 
 };

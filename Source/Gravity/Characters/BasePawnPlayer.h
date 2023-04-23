@@ -6,8 +6,10 @@
 #include "GameFramework/Pawn.h"
 #include "EnhancedInputComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Gravity/Components/ShooterCombatComponent.h"
 #include "BasePawnPlayer.generated.h"
 
+class UShooterHealthComponent;
 class AWeaponBase;
 class UBoxComponent;
 class AFloorBase;
@@ -34,7 +36,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	
-	//Hitboxes
+	//Hit Boxes
 	UPROPERTY(EditAnywhere)
 	UBoxComponent* Head;
 	UPROPERTY(EditAnywhere)
@@ -77,6 +79,8 @@ protected:
 	UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere)
 	UShooterCombatComponent* Combat;
+	UPROPERTY(EditAnywhere)
+	UShooterHealthComponent* Health;
 
 	//Inputs Bindings
 	UPROPERTY(EditAnywhere)
@@ -140,10 +144,10 @@ protected:
 	
 	void Boost(const FInputActionValue& ActionValue);
 	void Boost_Internal();
-	void ContactedFloorMagnitizeDelay();
-	FTimerHandle MagnitizeDealyForBoost;
+	void ContactedFloorMagnetizeDelay();
+	FTimerHandle MagnetizeDelayForBoost;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float MagnitizeDelay = 3.f;
+	float MagnetizeDelay = 3.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostCurrentVelocityReduction = 2.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -194,6 +198,7 @@ private:
 
 	bool bContactedWithFloor = false;
 	bool bContactedWithSphereFloor = false;
+	UPROPERTY()
 	ASphereFloorBase* SphereContactedWith;
 	bool bContactedWithLevelSphere = false;
 	
@@ -232,4 +237,7 @@ public:
 	void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
 	void SetbIsMagnitized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	USkeletalMeshComponent* GetMesh() { return Skeleton; }
+	FVector GetHitTarget();
+	UShooterCombatComponent* GetCombatComponent() { return Combat; }
+	UShooterHealthComponent* GetHealthComponent() { return Health; }
 };

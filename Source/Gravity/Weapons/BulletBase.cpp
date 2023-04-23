@@ -18,7 +18,14 @@ ABulletBase::ABulletBase()
 void ABulletBase::BeginPlay()
 {
 	Super::BeginPlay();
-	UE_LOG(LogTemp, Warning, TEXT("ABulletWasBorn!"));
+
+	BulletBox->OnComponentHit.AddDynamic(this, &ABulletBase::OnBulletHit);
+}
+
+void ABulletBase::OnBulletHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	FVector NormalImpulse, const FHitResult& Hit)
+{
+	Destroy();
 }
 
 void ABulletBase::Tick(float DeltaTime)
