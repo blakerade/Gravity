@@ -18,10 +18,11 @@ class GRAVITY_API AGravityPlayerController : public APlayerController
 	GENERATED_BODY()
 
 public:
-		UPROPERTY()
-    	AShooterHUD* ShooterHUD;
-    	UPROPERTY()
-    	ABasePawnPlayer* ShooterCharacter;
+	UPROPERTY()
+    AShooterHUD* ShooterHUD;
+    UPROPERTY()
+    ABasePawnPlayer* ShooterCharacter;
+	void UpdateShooterHUDHealth();
 	
 protected:
 	virtual void BeginPlay() override;
@@ -30,7 +31,6 @@ protected:
 private:
 	void SetHUDHealth();
 	bool bHUDHealthSet = false;
-	void UpdateShooterHUDHealth();
 	void PollInit();
 	
 public:

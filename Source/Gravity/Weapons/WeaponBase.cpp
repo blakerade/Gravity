@@ -28,6 +28,7 @@ void AWeaponBase::BeginPlay()
 
 	WeaponPickupSphere->OnComponentBeginOverlap.AddDynamic(this, &AWeaponBase::ShowPickupWidget);
 	WeaponPickupSphere->OnComponentEndOverlap.AddDynamic(this, &AWeaponBase::HidePickupWidget);
+	Shooter = Cast<ABasePawnPlayer>(GetOwner());
 }
 
 
@@ -39,7 +40,7 @@ void AWeaponBase::Tick(float DeltaTime)
 
 void AWeaponBase::ShowPickupWidget(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	ABasePawnPlayer* Shooter = Cast<ABasePawnPlayer>(OtherActor);
+	Shooter = Shooter == nullptr ? Cast<ABasePawnPlayer>(OtherActor) : Shooter;
 	if(Shooter)
 	{
 		AGravityPlayerController* ShooterController = Cast<AGravityPlayerController>(Shooter->GetController());
@@ -56,7 +57,7 @@ void AWeaponBase::ShowPickupWidget(UPrimitiveComponent* OverlappedComponent, AAc
 
 void AWeaponBase::HidePickupWidget(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	ABasePawnPlayer* Shooter = Cast<ABasePawnPlayer>(OtherActor);
+	Shooter = Shooter == nullptr ? Cast<ABasePawnPlayer>(OtherActor) : Shooter;
 	if(Shooter)
 	{
 		AGravityPlayerController* ShooterController = Cast<AGravityPlayerController>(Shooter->GetController());
@@ -73,11 +74,13 @@ void AWeaponBase::HidePickupWidget(UPrimitiveComponent* OverlappedComponent, AAc
 
 void AWeaponBase::RequestFire(FVector HitTarget)
 {
+	Shooter = Shooter == nullptr ? Cast<ABasePawnPlayer>(GetOwner()) : Shooter;
 	UWorld* World = GetWorld();
 	const USkeletalMeshSocket* Muzzle = WeaponBodyMesh->GetSocketByName(FName("MuzzleFlash"));
-	if(BulletClass && Muzzle && World)
+	if(Shooter && BulletClass && Muzzle && World)
 	{
-		World->SpawnActor<ABulletBase>(BulletClass, Muzzle->GetSocketLocation(WeaponBodyMesh), (HitTarget - Muzzle->GetSocketLocation(WeaponBodyMesh)).Rotation());
+		ABulletBase* Bullet = World->SpawnActor<ABulletBase>(BulletClass, Muzzle->GetSocketLocation(WeaponBodyMesh), (HitTarget - Muzzle->GetSocketLocation(WeaponBodyMesh)).Rotation());
+		Bullet->SetOwner(Shooter);
 	}
 }
 

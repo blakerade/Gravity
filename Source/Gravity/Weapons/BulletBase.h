@@ -29,6 +29,8 @@ private:
 
 	UFUNCTION()
 	void OnBulletHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	UPROPERTY(EditAnywhere)
+	float BulletDamage = 20.f;
 
 public:	
 

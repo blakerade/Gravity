@@ -9,6 +9,7 @@
 class ABulletBase;
 class UWidgetComponent;
 class USphereComponent;
+class ABasePawnPlayer;
 
 UCLASS()
 class GRAVITY_API AWeaponBase : public AActor
@@ -36,6 +37,9 @@ protected:
 	TSubclassOf<ABulletBase> BulletClass;
 
 private:
+	UPROPERTY()
+	ABasePawnPlayer* Shooter;
+	
 	UPROPERTY(EditAnywhere)
 	USkeletalMeshComponent* WeaponBodyMesh;
 

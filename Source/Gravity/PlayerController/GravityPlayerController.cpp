@@ -57,7 +57,7 @@ void AGravityPlayerController::UpdateShooterHUDHealth()
 	if(bUpdateHealth)
 	{
 		ShooterHUD->ShooterOverlay->HealthBar->SetPercent(ShooterCharacter->GetHealthComponent()->Health / ShooterCharacter->GetHealthComponent()->MaxHealth);
-		if(!bHUDHealthSet) bHUDHealthSet = true;
+		// if(!bHUDHealthSet) bHUDHealthSet = true;
 	}
 }
 

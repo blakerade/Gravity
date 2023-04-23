@@ -88,6 +88,7 @@ void ABasePawnPlayer::BeginPlay()
 	{
 		Capsule->OnComponentHit.AddDynamic(this, &ABasePawnPlayer::OnFloorHit);
 	}
+	OnTakeAnyDamage.AddDynamic(this, &ABasePawnPlayer::PassDamageToHealth);
 }
 
 void ABasePawnPlayer::Tick(float DeltaTime)
@@ -642,4 +643,8 @@ FVector ABasePawnPlayer::GetHitTarget()
 	}
 }
 
+void ABasePawnPlayer::PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
+{
+	Health->TakeDamage(DamagedActor, Damage, DamageType, InstigatedBy, DamageCauser);
+}
 

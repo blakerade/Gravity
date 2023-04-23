@@ -7,12 +7,14 @@
 #include "ShooterHealthComponent.generated.h"
 
 
+class AGravityPlayerController;
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class GRAVITY_API UShooterHealthComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
+	friend class ABasePawnPlayer;
 	UShooterHealthComponent();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -21,12 +23,16 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float MaxHealth = 100.f;
-	
+
 protected:
 	virtual void BeginPlay() override;
 
 private:
-
+	void TakeDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
+	UPROPERTY()
+	ABasePawnPlayer* Shooter;
+	UPROPERTY()
+	AGravityPlayerController* ShooterController;
 	
 public:	
 	

@@ -33,6 +33,7 @@ void UShooterCombatComponent::BeginPlay()
 			DefaultWeapon = GetWorld()->SpawnActor<AWeaponBase>(DefaultWeaponClass, MeshSlotTransform);
 			WeaponSocket->AttachActor(DefaultWeapon, Shooter->GetMesh());
 			EquippedWeapon = DefaultWeapon;
+			EquippedWeapon->SetOwner(Shooter);
 		}
 	}
 	SetHUDCrossHairs();

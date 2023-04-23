@@ -216,6 +216,8 @@ private:
 	UPROPERTY(EditAnywhere, Category = Movement)
 	float RotationSpeedDampener = 100.f;
 	void SphereFloorContactedGravity(float DeltaTime);
+	UFUNCTION()
+	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 
 	
 public:
