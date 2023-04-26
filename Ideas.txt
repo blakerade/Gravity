@@ -1,7 +1,5 @@
 -BUG-Switching to Magnitized while against a wall can remove a gravity from array for some reason/DuckTaped by making gravity triggers smaller
 
--EveryFloor Does not need to be magnitiziable, help with level building
-
 -Hud flashes first time gravity is availible.
 
 -Add a way to be drawn towards the center of a floor 
@@ -9,8 +7,6 @@
 -Cylinder floors?
 
 -Smooth of walking in sphere by looking at how walking on sphere works.
-
--Animations are complete first draft trash.
 
 -Increase boost speed.
 
