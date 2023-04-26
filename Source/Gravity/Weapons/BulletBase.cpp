@@ -11,7 +11,7 @@
 ABulletBase::ABulletBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
-
+	bReplicates = true;
 	BulletBox = CreateDefaultSubobject<UBoxComponent>(TEXT("Bullet"));
 	SetRootComponent(BulletBox);
 	BulletMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));

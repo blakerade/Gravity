@@ -4,9 +4,8 @@
 #include "PlayerAnimInstance.h"
 
 #include "BasePawnPlayer.h"
-#include "Engine/SkeletalMeshSocket.h"
 #include "Gravity/Weapons/WeaponBase.h"
-#include "Kismet/KismetMathLibrary.h"
+
 
 void UPlayerAnimInstance::NativeInitializeAnimation()
 {
@@ -24,7 +23,7 @@ void UPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	if(Player)
 	{
 		Pitch = Player->GetSpringArmPitch();
-		bOnAFloor = Player->GetContactedWith();	
+		bOnAFloor = static_cast<int>(Player->GetFloorStatus()) > 0 ? true : false;	
 		if(bOnAFloor)
 		{
 			FTransform WorldTransform = Player->GetTransform();
@@ -34,6 +33,6 @@ void UPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 			if(!FMath::IsNearlyZero(LocalVeclotiy.Y, 50.f)) LateralSpeed = LocalVeclotiy.Y;
 			else LateralSpeed = 0.f;
 		}
-		bMagnetize = Player->GetIsMagnitized();
+		bMagnetize = Player->GetIsMagnetized();
 	}
 }

@@ -7,6 +7,7 @@
 #include "EnhancedInputComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Gravity/Components/ShooterCombatComponent.h"
+#include "Gravity/GravityTypes/ShooterFloorStatus.h"
 #include "BasePawnPlayer.generated.h"
 
 class UShooterHealthComponent;
@@ -23,6 +24,16 @@ class UInputAction;
 class UInputMappingContext;
 class UShooterCombatComponent;
 
+USTRUCT()
+struct FShooterMove
+{
+	GENERATED_BODY()
+
+	FVector2D ShooterMoveVector;
+	
+};
+
+
 UCLASS()
 class GRAVITY_API ABasePawnPlayer : public APawn
 {
@@ -32,7 +43,9 @@ public:
 	ABasePawnPlayer();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
+	virtual void GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const override;
+	FShooterFloorStatus FloorStatus = FShooterFloorStatus::NoFloorContact;
+	
 protected:
 	virtual void BeginPlay() override;
 	
@@ -75,6 +88,8 @@ protected:
 	USkeletalMeshComponent* Skeleton;
 	UPROPERTY(EditAnywhere)
 	USpringArmComponent* SpringArm;
+	UPROPERTY(Replicated)
+	float SpringArmClientPitch;
 	UPROPERTY(EditAnywhere)
 	UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere)
@@ -105,9 +120,14 @@ protected:
 	UInputMappingContext* CharacterMovementMapping;
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterCombatMapping;
+	
 
 	//Input Functions
 	void Move(const FInputActionValue& ActionValue);
+	UFUNCTION(Server, Reliable)
+	void Server_Move(FVector2D ActionValue);
+	void Move_Internal(FVector2D ActionValue);
+	void SaveClientMove(FVector2D ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundSpeed = 5000.f;
@@ -120,11 +140,15 @@ protected:
 	float LateralSpeed = 0.5f;
 	
 	void AirMove(const FInputActionValue& ActionValue);
+	UFUNCTION(Server, Reliable)
+	void Server_AirMove(float ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirSpeed = 200.f;
 	
 	void Look(const FInputActionValue& ActionValue);
+	UFUNCTION(Server, Reliable)
+	void Server_Look(FVector2D ActionValue);
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirRotationSpeed = 20.f;
 
@@ -132,6 +156,8 @@ protected:
 	float AirForwardRollSpeed = 190000.f;
 	
 	void Jump(const FInputActionValue& ActionValue);
+	UFUNCTION(Server, Reliable)
+	void Server_Jump(float ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float JumpVelocity = 40000.f;
@@ -139,7 +165,9 @@ protected:
 	void Crouch(const FInputActionValue& ActionValue);
 	
 	void Magnetize(const FInputActionValue& ActionValue);
-	
+	UFUNCTION(Server, Reliable)
+	void Server_Magnetize();
+	UPROPERTY(Replicated)
 	bool bIsMagnetized = false;
 	
 	void Boost(const FInputActionValue& ActionValue);
@@ -195,9 +223,7 @@ private:
 
 	TArray<AFloorBase*> FloorGravities;
 	TArray<ASphereFloorBase*> SphereFloors;
-
-	bool bContactedWithFloor = false;
-	bool bContactedWithSphereFloor = false;
+	
 	UPROPERTY()
 	ASphereFloorBase* SphereContactedWith;
 	bool bContactedWithLevelSphere = false;
@@ -222,24 +248,24 @@ private:
 	
 public:
 	// void SetCurrentGravity(FVector InGravity) { CurrentGravity = InGravity;}
-	void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
+	FORCEINLINE void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
 	// void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
 	// void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
-	void SetContactedWith(bool bIsContactedWith);
-	void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
-	bool GetContactedWith() {return bContactedWithFloor || bContactedWithLevelSphere || bContactedWithSphereFloor;}
-	int32 GetGravitiesSize() {return FloorGravities.Num(); }
-	void AddToFloorGravities(AFloorBase* GravityToAdd) {FloorGravities.Add(GravityToAdd);}
-	void RemoveFromFloorGravities(AFloorBase* GravityToRemove) 	{FloorGravities.Remove(GravityToRemove);}
-	int32 GetSpheresSize() {return SphereFloors.Num(); }
-	void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
-	void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
-	float GetSpringArmPitch() { return SpringArm->GetRelativeRotation().Pitch; }
-	bool GetIsMagnitized() {return bIsMagnetized;}
-	void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
-	void SetbIsMagnitized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
-	USkeletalMeshComponent* GetMesh() { return Skeleton; }
+	FORCEINLINE void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
+	FORCEINLINE FShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
+	void SetFloorStatus(FShooterFloorStatus InFloorStatus);
+	FORCEINLINE int32 GetGravitiesSize() const {return FloorGravities.Num(); }
+	FORCEINLINE void AddToFloorGravities(AFloorBase* GravityToAdd) {FloorGravities.Add(GravityToAdd);}
+	FORCEINLINE void RemoveFromFloorGravities(AFloorBase* GravityToRemove) 	{FloorGravities.Remove(GravityToRemove);}
+	FORCEINLINE int32 GetSpheresSize() const {return SphereFloors.Num(); }
+	FORCEINLINE void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
+	FORCEINLINE void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
+	float GetSpringArmPitch() const;
+	FORCEINLINE bool GetIsMagnetized() const {return bIsMagnetized;}
+	FORCEINLINE void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
+	FORCEINLINE void SetbIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
+	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
 	FVector GetHitTarget();
-	UShooterCombatComponent* GetCombatComponent() { return Combat; }
-	UShooterHealthComponent* GetHealthComponent() { return Health; }
+	FORCEINLINE UShooterCombatComponent* GetCombatComponent() const { return Combat; }
+	FORCEINLINE UShooterHealthComponent* GetHealthComponent() const { return Health; }
 };

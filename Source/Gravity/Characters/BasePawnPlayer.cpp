@@ -16,10 +16,12 @@
 #include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
 #include "Gravity/Weapons/WeaponBase.h"
+#include "Net/UnrealNetwork.h"
 
 ABasePawnPlayer::ABasePawnPlayer()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	bReplicates = false;
 	Capsule = CreateDefaultSubobject<UCapsuleComponent>("Capsule");
 	SetRootComponent(Capsule);
 	Capsule->SetCapsuleHalfHeight(90.f);
@@ -28,6 +30,7 @@ ABasePawnPlayer::ABasePawnPlayer()
 	Skeleton->SetupAttachment(RootComponent);
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>("SpringArm");
 	SpringArm->SetupAttachment(Skeleton);
+	SpringArm->SetIsReplicated(true);
 	Camera = CreateDefaultSubobject<UCameraComponent>("Camera");
 	Camera->SetupAttachment(SpringArm);
 	Combat = CreateDefaultSubobject<UShooterCombatComponent>(TEXT("CombatComponent"));
@@ -66,6 +69,15 @@ ABasePawnPlayer::ABasePawnPlayer()
 	LeftHand->SetupAttachment(Skeleton, FName("LeftHand"));
 }
 
+
+void ABasePawnPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ABasePawnPlayer, bIsMagnetized);
+	DOREPLIFETIME(ABasePawnPlayer, SpringArmClientPitch);
+}
+
 void ABasePawnPlayer::BeginPlay()
 {
 	Super::BeginPlay();
@@ -96,7 +108,6 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	
 	PerformGravity(DeltaTime);
-	PerformPlayerMovement();
 	FindSphere();
 	SphereFloorContactedGravity(DeltaTime);
 }
@@ -108,78 +119,94 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	if (UEnhancedInputComponent* PlayerEnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// This calls the handler function on the tick when MyInputAction starts, such as when pressing an action button.
-		bool bActions = MoveAction &&
-			AirMoveAction &&
-			LookAction &&
-			JumpAction &&
-			CrouchAction &&
-			MagnetizeAction &&
-			BoostAction &&
-			EquipAction &&
-			FireAction;
-		if (bActions)
-		{
-			PlayerEnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Move);
-			PlayerEnhancedInputComponent->BindAction(AirMoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::AirMove);
-			PlayerEnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Look);
-			PlayerEnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Jump);
-			PlayerEnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Crouch);
-			PlayerEnhancedInputComponent->BindAction(MagnetizeAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Magnetize);
-			PlayerEnhancedInputComponent->BindAction(BoostAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Boost);
-			PlayerEnhancedInputComponent->BindAction(EquipAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Equip);
-			PlayerEnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Fire);
-		}
+		PlayerEnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Move);
+		PlayerEnhancedInputComponent->BindAction(AirMoveAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::AirMove);
+		PlayerEnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Look);
+		PlayerEnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Jump);
+		PlayerEnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Crouch);
+		PlayerEnhancedInputComponent->BindAction(MagnetizeAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Magnetize);
+		PlayerEnhancedInputComponent->BindAction(BoostAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Boost);
+		PlayerEnhancedInputComponent->BindAction(EquipAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Equip);
+		PlayerEnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Fire);
 	}
 }
 
 void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 {
-	//Adds to ControlInputValue, which is used in PerformPlayerMovement
-	const FVector2D Value = ActionValue.Get<FVector2D>();
-
-	//Add differences for forward/backwards/lateral movement and if we are in the air or not
-	if(GetContactedWith())
+	FVector2D Value = ActionValue.Get<FVector2D>();
+	if(!HasAuthority() && IsLocallyControlled())
 	{
-		AddMovementInput(GetActorRightVector() * Value.Y * LateralSpeed);
-		if(Value.X > 0.f)
-		{
-			AddMovementInput(GetActorForwardVector() * Value.X * ForwardSpeed);
-		}
-		else if(Value.X < 0.f)
-		{
-			AddMovementInput(GetActorForwardVector() * Value.X * BackwardsSpeed);
-		}
+		Move_Internal(Value);
 	}
+	if(HasAuthority() && IsLocallyControlled())
+	{
+		Server_Move(Value);
+	}
+	PerformPlayerMovement();
+}
+
+void ABasePawnPlayer::Server_Move_Implementation(FVector2D ActionValue)
+{
+	Move_Internal(ActionValue);
+}
+
+void ABasePawnPlayer::Move_Internal(FVector2D ActionValue)
+{
+	//Adds to ControlInputValue, which is used in PerformPlayerMovement
+	//Add differences for forward/backwards/lateral movement and if we are in the air or not
+	if(static_cast<int>(FloorStatus) > 0) //0 is no contact, any other contact with a floor is 1+
+		{
+		AddMovementInput(GetActorRightVector() * ActionValue.Y * LateralSpeed);
+		if(ActionValue.X > 0.f)
+		{
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * ForwardSpeed);
+		}
+		else if(ActionValue.X < 0.f)
+		{
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * BackwardsSpeed);
+		}
+		}
 	else
 	{
-		AddMovementInput(GetActorForwardVector() * Value.X);
-		AddMovementInput(GetActorRightVector() * Value.Y);
+		AddMovementInput(GetActorForwardVector() * ActionValue.X);
+		AddMovementInput(GetActorRightVector() * ActionValue.Y);
 	}
+}
+
+void ABasePawnPlayer::SaveClientMove(FVector2D ActionValue)
+{
 	
 }
 
 void ABasePawnPlayer::AirMove(const FInputActionValue& ActionValue)
 {
 	//Adds to ControlInputValue, which is used in PreformPlayerMovement
-	if(!GetContactedWith())
+	Server_AirMove(ActionValue.Get<float>());
+}
+
+void ABasePawnPlayer::Server_AirMove_Implementation(float ActionValue)
+{
+	if(static_cast<int>(FloorStatus) == 0) //0 is no contact with a floor
 	{
-		const float Value = ActionValue.Get<float>();
-		AddMovementInput(GetActorUpVector() * Value);
+		AddMovementInput(GetActorUpVector() * ActionValue);
 	}
 }
 
 void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 {
-	const FVector2D Value = ActionValue.Get<FVector2D>();
-	
-	if(GetContactedWith())
+	Server_Look(ActionValue.Get<FVector2D>());
+}
+
+void ABasePawnPlayer::Server_Look_Implementation(FVector2D ActionValue)
+{
+	if(static_cast<int>(FloorStatus) > 0) //0 is not contact, any other contact is 1+
 	{
 		//Have to Rotate the actor without controller because controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
-		AddActorLocalRotation(FRotator(0.f,Value.X,0.f));
+		AddActorLocalRotation(FRotator(0.f,ActionValue.X,0.f));
 	}
 	else
 	{
-		Capsule->AddTorqueInDegrees(GetActorUpVector() * AirRotationSpeed * Value.X, NAME_None, true);
+		Capsule->AddTorqueInDegrees(GetActorUpVector() * AirRotationSpeed * ActionValue.X, NAME_None, true);
 	}
 	
 	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
@@ -187,11 +214,11 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 	if(SpringArmPitch <= -75.f)
 	{
 		//this if is for how far to look down
-		if(Value.Y >= 0.f)
+		if(ActionValue.Y >= 0.f)
 		{
-			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+			SpringArm->AddLocalRotation(FRotator(ActionValue.Y,0.f,0.f));
 		}
-		else if(Value.Y <= 0.f && !GetContactedWith() && !bIsMagnetized)
+		else if(ActionValue.Y <= 0.f && static_cast<int>(FloorStatus) == 0 && !bIsMagnetized)
 		{
 			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed);
 		}
@@ -199,28 +226,36 @@ void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 	else if(SpringArmPitch >= 70.f)
 	{
 		//this if is for how far to look up
-		if(Value.Y <= 0.f)
+		if(ActionValue.Y <= 0.f)
 		{
-			SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+			SpringArm->AddLocalRotation(FRotator(ActionValue.Y,0.f,0.f));
 		}
-		else if(Value.Y >= 0.f && !GetContactedWith() && !bIsMagnetized)
+		else if(ActionValue.Y >= 0.f && static_cast<int>(FloorStatus) == 0 && !bIsMagnetized)
 		{
 			Capsule->AddTorqueInRadians(GetActorRightVector() * -AirForwardRollSpeed);
 		}
 	}
 	else
 	{
-		SpringArm->AddLocalRotation(FRotator(Value.Y,0.f,0.f));
+		SpringArm->AddLocalRotation(FRotator(ActionValue.Y,0.f,0.f));
 	}
-	
+	if(HasAuthority())
+	{
+		SpringArmClientPitch = SpringArmPitch;
+	}
 }
 
 void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 {
-	if(GetContactedWith() && bIsMagnetized)
+	Server_Jump(ActionValue.Get<float>());
+}
+
+void ABasePawnPlayer::Server_Jump_Implementation(float ActionValue)
+{
+	if(static_cast<int>(FloorStatus) > 0 && bIsMagnetized)
 	{
-		SetContactedWith(false);
-		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity * ActionValue.Get<float>());
+		SetFloorStatus(FShooterFloorStatus::NoFloorContact);
+		Capsule->AddImpulse(GetActorUpVector() * JumpVelocity * ActionValue);
 		//Commented out because we no longer add a constraint on landing, could change in the future
 		// Capsule->SetConstraintMode(EDOFMode::None);
 		Capsule->SetLinearDamping(AirFriction);
@@ -229,11 +264,17 @@ void ABasePawnPlayer::Jump(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::Crouch(const FInputActionValue& ActionValue)
 {
+	
 }
 
 void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 {
-	if(GetContactedWith())
+	Server_Magnetize();
+}
+
+void ABasePawnPlayer::Server_Magnetize_Implementation()
+{
+	if(static_cast<int>(FloorStatus) > 0)
 	{
 		Jump(0.25f);
 	}
@@ -243,7 +284,7 @@ void ABasePawnPlayer::Magnetize(const FInputActionValue& ActionValue)
 	if(!bIsMagnetized)
 	{
 		ZeroOutCurrentGravity();
-		SetContactedWith(false);
+		SetFloorStatus(FShooterFloorStatus::NoFloorContact);
 	}
 	else if(FloorGravities.Num() != 0 || SphereFloors.Num() != 0)
 	{
@@ -260,7 +301,7 @@ void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
 	bCanBoost = BoostCount >= 2 ? false : true;
 	if(bCanBoost)
 	{
-		if(!GetContactedWith())
+		if(static_cast<int>(FloorStatus) == 0)
 		{
 			Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
 			Boost_Internal();
@@ -317,12 +358,12 @@ void ABasePawnPlayer::Fire(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::PerformPlayerMovement()
 {
-	if(!GetContactedWith())
+	if(static_cast<int>(FloorStatus) == 0)
 	{
 		Capsule->AddImpulse(ControlInputVector * AirSpeed);
 		ConsumeMovementInputVector();
 	}
-	else if(GetContactedWith() && bIsMagnetized)
+	else if(static_cast<int>(FloorStatus) > 0 && bIsMagnetized)
 	{
 		Capsule->AddImpulse(ControlInputVector * GroundSpeed);
         ConsumeMovementInputVector();
@@ -332,7 +373,7 @@ void ABasePawnPlayer::PerformPlayerMovement()
 
 void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
-	if(bIsMagnetized && !GetContactedWith())
+	if(bIsMagnetized && static_cast<int>(FloorStatus) == 0)
 	{
 		float GravityDistance;
 		bool bIsAFloorBase = false;
@@ -521,14 +562,17 @@ void ABasePawnPlayer::OrientToGravity(FVector GravityToOrientTo, float DeltaTime
 		{
 			FeetToGravity = FRotationMatrix::MakeFromZY(-GravityToOrientTo, GetActorRightVector());
 			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
-			SetActorRotation(InterpRotation);
+			FQuat NewRotation = FQuat::Slerp(GetActorRotation().Quaternion(),FeetToGravity.ToQuat(), DeltaTime * 2.f);
+			SetActorRotation(NewRotation);
 		}
 		else
 		{
 			//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
 			FeetToGravity = FRotationMatrix::MakeFromZX(-GravityToOrientTo, GetActorForwardVector());
 			FRotator InterpRotation = FMath::RInterpTo(GetActorRotation(), FeetToGravity.Rotator(), DeltaTime, 2.f);
-			SetActorRotation(InterpRotation);
+			FQuat NewRotation = FQuat::Slerp(GetActorRotation().Quaternion(),FeetToGravity.ToQuat(), DeltaTime * 2.f);
+			SetActorRotation(NewRotation);
+			
 		}
 	}
 	else
@@ -555,7 +599,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 {
 	if(AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 	{
-		if(!bContactedWithFloor && Capsule && bIsMagnetized)	
+		if(FloorStatus == FShooterFloorStatus::NoFloorContact && Capsule && bIsMagnetized)	
 		{
 			if(Floor->GetFloorGravity() == CurrentGravity || Floor->GetFloorGravity() == -CurrentGravity)
 			{
@@ -572,7 +616,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 					//If the Rinterpto isn't done we still need to be rotated corrected when we land
 					SetActorRotation(FeetToGravity.Rotator());
 					//Important bool for other functionality
-					bContactedWithFloor = true;
+					SetFloorStatus(FShooterFloorStatus::BaseFloorContact);
 					//Stops the capsule from falling over
 					Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 					//Set damping to a high value so that when we are walking it doesn't feel like we are skating
@@ -588,7 +632,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
 			SetActorRotation(FRotationMatrix::MakeFromZX(SphereCenter - GetActorLocation(), GetActorForwardVector()).Rotator());
 			//Important bool for other functionality
-			bContactedWithLevelSphere = true;
+			SetFloorStatus(FShooterFloorStatus::SphereLevelContact);
 			//Stops the capsule from falling over
 			Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 			//Set damping to a high value so that when we are walking it doesn't feel like we are skating
@@ -600,7 +644,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 		//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
 		SetActorRotation(FRotationMatrix::MakeFromZX(GetActorLocation() - SphereFloor->GetActorLocation(), GetActorForwardVector()).Rotator());
 		//Important bool for other functionality
-		bContactedWithSphereFloor = true;
+		SetFloorStatus(FShooterFloorStatus::SphereFloorContact);
 		//Stops the capsule from falling over
 		Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 		//Set damping to a high value so that when we are walking it doesn't feel like we are skating
@@ -612,7 +656,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 
 void ABasePawnPlayer::SphereFloorContactedGravity(float DeltaTime)
 {
-	if(bContactedWithSphereFloor && SphereContactedWith)
+	if(FloorStatus == FShooterFloorStatus::SphereFloorContact && SphereContactedWith)
 	{
 		//Pull towards the center of sphere floor while we are contacted with the floor
 		const FVector ToSphereGravity = (SphereContactedWith->GetActorLocation() - GetActorLocation()).GetSafeNormal();
@@ -620,14 +664,16 @@ void ABasePawnPlayer::SphereFloorContactedGravity(float DeltaTime)
 		OrientToGravity(ToSphereGravity, DeltaTime, 1.f, bHaveAGravity);
 	}
 }
-void ABasePawnPlayer::SetContactedWith(bool bIsContactedWith)
+
+float ABasePawnPlayer::GetSpringArmPitch() const
 {
-	if(bContactedWithFloor || bContactedWithLevelSphere || bContactedWithSphereFloor)
+	if(HasAuthority())
 	{
-		bContactedWithFloor = bIsContactedWith;
-		bContactedWithSphereFloor = bIsContactedWith;
-		bContactedWithLevelSphere = bIsContactedWith;
-		Capsule->SetLinearDamping(AirFriction);
+		return SpringArm->GetRelativeRotation().Pitch;
+	}
+	else
+	{
+		return SpringArmClientPitch;
 	}
 }
 
@@ -646,5 +692,18 @@ FVector ABasePawnPlayer::GetHitTarget()
 void ABasePawnPlayer::PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
 	Health->TakeDamage(DamagedActor, Damage, DamageType, InstigatedBy, DamageCauser);
+}
+
+void ABasePawnPlayer::SetFloorStatus(FShooterFloorStatus InFloorStatus)
+{
+	FloorStatus = InFloorStatus;
+	if(FloorStatus == FShooterFloorStatus::NoFloorContact)
+	{
+		Capsule->SetLinearDamping(AirFriction);
+	}
+	else
+	{
+		Capsule->SetLinearDamping(FloorFriction);
+	}
 }
 
