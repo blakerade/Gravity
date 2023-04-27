@@ -29,7 +29,19 @@ struct FShooterMove
 {
 	GENERATED_BODY()
 
-	FVector2D ShooterMoveVector;
+	FVector MovementVector;
+	FVector2D PitchVector;
+	bool bJumped = false;
+	bool bMagnetized = false;
+	bool bDidBoost = false;
+	FVector BoostDirection;
+	
+};
+
+USTRUCT()
+struct FShooterStatus
+{
+	GENERATED_BODY()
 	
 };
 
@@ -101,8 +113,6 @@ protected:
 	UPROPERTY(EditAnywhere)
 	UInputAction* MoveAction;
 	UPROPERTY(EditAnywhere)
-	UInputAction* AirMoveAction;
-	UPROPERTY(EditAnywhere)
 	UInputAction* LookAction;
 	UPROPERTY(EditAnywhere)
 	UInputAction* JumpAction;
@@ -110,6 +120,8 @@ protected:
 	UInputAction* CrouchAction;
 	UPROPERTY(EditAnywhere)
 	UInputAction* MagnetizeAction;
+	UPROPERTY(EditAnywhere)
+	UInputAction* BoostDirectionAction;
 	UPROPERTY(EditAnywhere)
 	UInputAction* BoostAction;
 	UPROPERTY(EditAnywhere)
@@ -125,28 +137,22 @@ protected:
 	//Input Functions
 	void Move(const FInputActionValue& ActionValue);
 	UFUNCTION(Server, Reliable)
-	void Server_Move(FVector2D ActionValue);
-	void Move_Internal(FVector2D ActionValue);
-	void SaveClientMove(FVector2D ActionValue);
+	void Server_Move(FVector ActionValue);
+	void Move_Internal(FVector ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundSpeed = 5000.f;
-
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float ForwardSpeed = 1.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BackwardsSpeed = 0.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float LateralSpeed = 0.5f;
-	
-	void AirMove(const FInputActionValue& ActionValue);
-	UFUNCTION(Server, Reliable)
-	void Server_AirMove(float ActionValue);
-	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirSpeed = 200.f;
 	
 	void Look(const FInputActionValue& ActionValue);
+	void Look_Internal(FVector2D ActionValue);
 	UFUNCTION(Server, Reliable)
 	void Server_Look(FVector2D ActionValue);
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -156,6 +162,7 @@ protected:
 	float AirForwardRollSpeed = 190000.f;
 	
 	void Jump(const FInputActionValue& ActionValue);
+	void Jump_Internal(float ActionValue);
 	UFUNCTION(Server, Reliable)
 	void Server_Jump(float ActionValue);
 	
@@ -167,23 +174,30 @@ protected:
 	void Magnetize(const FInputActionValue& ActionValue);
 	UFUNCTION(Server, Reliable)
 	void Server_Magnetize();
+	void Magnetize_Internal();
 	UPROPERTY(Replicated)
 	bool bIsMagnetized = false;
-	
+
+	void BoostWithDirection(const FInputActionValue& ActionValue);
 	void Boost(const FInputActionValue& ActionValue);
-	void Boost_Internal();
+	UFUNCTION(Server, Reliable)
+	void Server_Boost(FVector BoostDirection);
+	void Boost_Internal(FVector BoostDirection);
+	void BoostForce(const FVector BoostDirection);
 	void ContactedFloorMagnetizeDelay();
 	FTimerHandle MagnetizeDelayForBoost;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float MagnetizeDelay = 3.f;
+	float MagnetizeDelay = 1.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostCurrentVelocityReduction = 2.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float BoostSpeed = 55000.f;
+	float BoostSpeed = 1000.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float BoostRechargeRate = 5.f;
 	bool bCanBoost = true;
 	int8 BoostCount = 0;
+	UPROPERTY(EditAnywhere, Category = Movement)
+	int8 MaxBoosts = 2;
 	void BoostCountConsumer();
 	FTimerHandle BoostTimerHandle;
 
@@ -244,13 +258,14 @@ private:
 	void SphereFloorContactedGravity(float DeltaTime);
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
-
+	
+	FShooterMove ShooterMove;
+	UFUNCTION(Server, Unreliable)
+	void SendServerMove(FShooterMove ClientMove);
+	
 	
 public:
-	// void SetCurrentGravity(FVector InGravity) { CurrentGravity = InGravity;}
 	FORCEINLINE void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
-	// void SetSphere(AGravitySphere* LevelSphere) {Sphere = LevelSphere;}
-	// void SetSphereCenter(FVector SphereLocation) {SphereCenter = SphereLocation;}
 	FORCEINLINE void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
 	FORCEINLINE FShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
 	void SetFloorStatus(FShooterFloorStatus InFloorStatus);
