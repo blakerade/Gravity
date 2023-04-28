@@ -29,11 +29,17 @@ struct FShooterMove
 {
 	GENERATED_BODY()
 
+	UPROPERTY()
 	FVector MovementVector;
+	UPROPERTY()
 	FVector2D PitchVector;
+	UPROPERTY()
 	bool bJumped = false;
+	UPROPERTY()
 	bool bMagnetized = false;
+	UPROPERTY()
 	bool bDidBoost = false;
+	UPROPERTY()
 	FVector BoostDirection;
 	
 };
@@ -259,7 +265,6 @@ private:
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 	
-	FShooterMove ShooterMove;
 	UFUNCTION(Server, Unreliable)
 	void SendServerMove(FShooterMove ClientMove);
 	

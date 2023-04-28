@@ -137,14 +137,15 @@ void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 	if(!HasAuthority())
 	{
 		Move_Internal(Value);
-		ShooterMove.MovementVector = Value;
-		SendServerMove(ShooterMove);
+		FShooterMove MoveToSend;
+		MoveToSend.MovementVector = Value;
+		UE_LOG(LogTemp, Warning, TEXT("Client On Client: %s"), *MoveToSend.MovementVector.ToString());
+		SendServerMove(MoveToSend);
 	}
-	if(HasAuthority())
+	else
 	{
 		Server_Move(Value);
 	}
-	PerformPlayerMovement();
 }
 
 void ABasePawnPlayer::Server_Move_Implementation(FVector ActionValue)
@@ -157,24 +158,40 @@ void ABasePawnPlayer::Move_Internal(FVector ActionValue)
 	//Adds to ControlInputValue, which is used in PerformPlayerMovement
 	//Add differences for forward/backwards/lateral movement and if we are in the air or not
 	if(FloorStatus != FShooterFloorStatus::NoFloorContact) //if contacted with a floor
+	{
+		AddMovementInput(GetActorRightVector() * ActionValue.Y * LateralSpeed);
+		if(ActionValue.X > 0.f)
 		{
-			AddMovementInput(GetActorRightVector() * ActionValue.Y * LateralSpeed);
-			if(ActionValue.X > 0.f)
-			{
-				AddMovementInput(GetActorForwardVector() * ActionValue.X * ForwardSpeed);
-			}
-			else if(ActionValue.X < 0.f)
-			{
-				AddMovementInput(GetActorForwardVector() * ActionValue.X * BackwardsSpeed);
-			}
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * ForwardSpeed);
 		}
+		else if(ActionValue.X < 0.f)
+		{
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * BackwardsSpeed);
+		}
+	}
 	else
 	{
 		AddMovementInput(GetActorForwardVector() * ActionValue.X);
 		AddMovementInput(GetActorRightVector() * ActionValue.Y);
 		AddMovementInput(GetActorUpVector() * ActionValue.Z);
 	}
+	PerformPlayerMovement();
 }
+
+void ABasePawnPlayer::PerformPlayerMovement()
+{
+	if(FloorStatus == FShooterFloorStatus::NoFloorContact) //if not contacted with floor
+	{
+		Capsule->AddImpulse(ControlInputVector * AirSpeed);
+		ConsumeMovementInputVector();
+	}
+	else if(FloorStatus != FShooterFloorStatus::NoFloorContact && bIsMagnetized)//if contacted with floor and magnetized
+	{
+		Capsule->AddImpulse(ControlInputVector * GroundSpeed);
+		ConsumeMovementInputVector();
+	}
+}
+
 
 void ABasePawnPlayer::Look(const FInputActionValue& ActionValue)
 {
@@ -319,7 +336,7 @@ void ABasePawnPlayer::Magnetize_Internal()
 
 void ABasePawnPlayer::BoostWithDirection(const FInputActionValue& ActionValue)
 {
-	FVector BoostDirection = ActionValue.Get<FVector>();
+	const FVector BoostDirection = ActionValue.Get<FVector>();
 	if(!HasAuthority() && IsLocallyControlled())
 	{
 		Boost_Internal(BoostDirection);
@@ -426,21 +443,6 @@ void ABasePawnPlayer::Fire(const FInputActionValue& ActionValue)
 	if(Combat && Combat->EquippedWeapon)
 	{
 		Combat->EquippedWeapon->RequestFire(GetHitTarget());
-	}
-}
-
-void ABasePawnPlayer::PerformPlayerMovement()
-{
-
-	if(FloorStatus == FShooterFloorStatus::NoFloorContact) //if not contacted with floor
-	{
-		Capsule->AddImpulse(ControlInputVector * AirSpeed);
-		ConsumeMovementInputVector();
-	}
-	else if(FloorStatus != FShooterFloorStatus::NoFloorContact && bIsMagnetized)//if contacted with floor and magnetized
-	{
-		Capsule->AddImpulse(ControlInputVector * GroundSpeed);
-		ConsumeMovementInputVector();
 	}
 }
 
@@ -780,10 +782,9 @@ void ABasePawnPlayer::SetFloorStatus(FShooterFloorStatus InFloorStatus)
 	}
 }
 
-
 void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 {
-	ShooterMove = ClientMove;
-	PerformPlayerMovement();
+	FShooterMove MoveRecieved = ClientMove;
+	Move_Internal(MoveRecieved.MovementVector);
 }
 
