@@ -42,7 +42,7 @@ void AFloorBase::RemovePawnGravity(UPrimitiveComponent* OverlappedComponent, AAc
 		if(PawnPlayer->GetGravitiesSize() == 0 && PawnPlayer->GetSpheresSize() == 0)
 		{
 			PawnPlayer->SetFloorStatus(FShooterFloorStatus::NoFloorContact);
-			PawnPlayer->SetbIsMagnetized(false);
+			PawnPlayer->SetIsMagnetized(false);
 		}
 	}
 }

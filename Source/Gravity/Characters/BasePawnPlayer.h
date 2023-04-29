@@ -30,9 +30,9 @@ struct FShooterMove
 	GENERATED_BODY()
 
 	UPROPERTY()
-	FVector MovementVector;
+	FVector MovementVector = FVector::ZeroVector;
 	UPROPERTY()
-	FVector2D PitchVector;
+	FVector2D PitchVector = FVector2D::ZeroVector;
 	UPROPERTY()
 	bool bJumped = false;
 	UPROPERTY()
@@ -40,7 +40,7 @@ struct FShooterMove
 	UPROPERTY()
 	bool bDidBoost = false;
 	UPROPERTY()
-	FVector BoostDirection;
+	FVector BoostDirection = FVector::ZeroVector;
 	UPROPERTY()
 	float GameTime;
 	
@@ -59,6 +59,8 @@ struct FShooterStatus
 	FShooterMove LastMove;
 	UPROPERTY()
 	FVector Velocity;
+	UPROPERTY()
+	FVector Torque;
 	
 };
 
@@ -152,9 +154,15 @@ protected:
 	
 
 	//Input Functions
-	void Move(const FInputActionValue& ActionValue);
-	UFUNCTION(Server, Reliable)
-	void Server_Move(FVector ActionValue);
+	void ShooterMovement();
+	void Move(FShooterMove& OutMove);
+	FVector MoveVector;
+	void Look(FShooterMove& OutMove);
+	FVector2D PitchVector;
+	void Jump(FShooterMove& OutMove);
+	void Magnetized(FShooterMove& OutMove);
+	
+	void MovePressed(const FInputActionValue& ActionValue);
 	void Move_Internal(FVector ActionValue);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -167,38 +175,32 @@ protected:
 	float LateralSpeed = 0.5f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirSpeed = 200.f;
-	
-	void Look(const FInputActionValue& ActionValue);
+
+	void LookActivated(const FInputActionValue& ActionValue);
 	void Look_Internal(FVector2D ActionValue);
-	UFUNCTION(Server, Reliable)
-	void Server_Look(FVector2D ActionValue);
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirRotationSpeed = 20.f;
 
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirForwardRollSpeed = 190000.f;
 	
-	void Jump(const FInputActionValue& ActionValue);
-	void Jump_Internal(float ActionValue);
-	UFUNCTION(Server, Reliable)
-	void Server_Jump(float ActionValue);
+	void JumpPressed(const FInputActionValue& ActionValue);
+	bool bJumpPressed = false;
+	void Jump_Internal(bool bJumpWasPressed);
 	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float JumpVelocity = 40000.f;
 	
 	void Crouch(const FInputActionValue& ActionValue);
 	
-	void Magnetize(const FInputActionValue& ActionValue);
-	UFUNCTION(Server, Reliable)
-	void Server_Magnetize();
-	void Magnetize_Internal();
+	void MagnetizePressed(const FInputActionValue& ActionValue);
+	bool bMagnetizedPressed = false;
+	void Magnetize_Internal(bool bMagnetizedWasPressed);
 	UPROPERTY(Replicated)
 	bool bIsMagnetized = false;
 
 	void BoostWithDirection(const FInputActionValue& ActionValue);
 	void Boost(const FInputActionValue& ActionValue);
-	UFUNCTION(Server, Reliable)
-	void Server_Boost(FVector BoostDirection);
 	void Boost_Internal(FVector BoostDirection);
 	void BoostForce(const FVector BoostDirection);
 	void ContactedFloorMagnetizeDelay();
@@ -304,7 +306,7 @@ public:
 	float GetSpringArmPitch() const;
 	FORCEINLINE bool GetIsMagnetized() const {return bIsMagnetized;}
 	FORCEINLINE void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
-	FORCEINLINE void SetbIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
+	FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
 	FVector GetHitTarget();
 	FORCEINLINE UShooterCombatComponent* GetCombatComponent() const { return Combat; }
