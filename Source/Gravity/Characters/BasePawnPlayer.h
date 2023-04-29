@@ -41,6 +41,8 @@ struct FShooterMove
 	bool bDidBoost = false;
 	UPROPERTY()
 	FVector BoostDirection;
+	UPROPERTY()
+	float GameTime;
 	
 };
 
@@ -48,6 +50,15 @@ USTRUCT()
 struct FShooterStatus
 {
 	GENERATED_BODY()
+
+	UPROPERTY()
+	FTransform ShooterTransform;
+	UPROPERTY()
+	bool bMagnetized;
+	UPROPERTY()
+	FShooterMove LastMove;
+	UPROPERTY()
+	FVector Velocity;
 	
 };
 
@@ -267,6 +278,16 @@ private:
 	
 	UFUNCTION(Server, Unreliable)
 	void SendServerMove(FShooterMove ClientMove);
+
+	TArray<FShooterMove> UnacknowledgedMoves;
+	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
+	FShooterStatus StatusOnServer;
+
+	
+	UFUNCTION()
+	void OnRep_StatusOnServer();
+	void ClearAcknowledgedMoves();
+	void PlayUnacknowledgedMoves();
 	
 	
 public:

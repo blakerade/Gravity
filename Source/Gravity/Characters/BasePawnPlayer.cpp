@@ -10,12 +10,14 @@
 #include "VectorTypes.h"
 #include "Chaos/SpatialAccelerationCollection.h"
 #include "Components/BoxComponent.h"
+#include "GameFramework/GameStateBase.h"
 #include "Gravity/Components/ShooterCombatComponent.h"
 #include "Gravity/Components/ShooterHealthComponent.h"
 #include "Gravity/Flooring/FloorBase.h"
 #include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Sphere/GravitySphere.h"
 #include "Gravity/Weapons/WeaponBase.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
 ABasePawnPlayer::ABasePawnPlayer()
@@ -74,6 +76,7 @@ void ABasePawnPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	DOREPLIFETIME(ABasePawnPlayer, StatusOnServer);
 	DOREPLIFETIME(ABasePawnPlayer, bIsMagnetized);
 	DOREPLIFETIME(ABasePawnPlayer, SpringArmClientPitch);
 }
@@ -110,6 +113,10 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 	PerformGravity(DeltaTime);
 	FindSphere();
 	SphereFloorContactedGravity(DeltaTime);
+	if(!HasAuthority() && IsLocallyControlled())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Moves Size: %d"), UnacknowledgedMoves.Num());
+	}
 }
 
 void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -139,12 +146,16 @@ void ABasePawnPlayer::Move(const FInputActionValue& ActionValue)
 		Move_Internal(Value);
 		FShooterMove MoveToSend;
 		MoveToSend.MovementVector = Value;
-		UE_LOG(LogTemp, Warning, TEXT("Client On Client: %s"), *MoveToSend.MovementVector.ToString());
+		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
+		UnacknowledgedMoves.Add(MoveToSend);
+		// ReSharper disable once CppSomeObjectMembersMightNotBeInitialized
 		SendServerMove(MoveToSend);
 	}
 	else
 	{
 		Server_Move(Value);
+		StatusOnServer.ShooterTransform = GetActorTransform();
+		StatusOnServer.Velocity = GetVelocity();
 	}
 }
 
@@ -784,7 +795,41 @@ void ABasePawnPlayer::SetFloorStatus(FShooterFloorStatus InFloorStatus)
 
 void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 {
-	FShooterMove MoveRecieved = ClientMove;
-	Move_Internal(MoveRecieved.MovementVector);
+	Move_Internal(ClientMove.MovementVector);
+	StatusOnServer.Velocity = GetVelocity();
+	StatusOnServer.ShooterTransform = GetActorTransform();
+	StatusOnServer.LastMove = ClientMove;
 }
 
+void ABasePawnPlayer::OnRep_StatusOnServer()
+{
+	SetActorTransform(StatusOnServer.ShooterTransform);
+	if(!IsLocallyControlled())
+	{
+		Capsule->SetPhysicsLinearVelocity(StatusOnServer.Velocity);
+	}
+	ClearAcknowledgedMoves();
+	PlayUnacknowledgedMoves();
+	
+}
+
+void ABasePawnPlayer::ClearAcknowledgedMoves()
+{
+	TArray<FShooterMove> NewMoves;
+	for(FShooterMove MoveToCheck : UnacknowledgedMoves)
+	{
+		if(StatusOnServer.LastMove.GameTime < MoveToCheck.GameTime)
+		{
+			NewMoves.Add(MoveToCheck);
+		}
+	}
+	UnacknowledgedMoves = NewMoves;
+}
+
+void ABasePawnPlayer::PlayUnacknowledgedMoves()
+{
+	for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
+	{
+		Move_Internal(MoveToPlay.MovementVector);
+	}
+}
