@@ -130,10 +130,9 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		PlayerEnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::JumpPressed);
 		PlayerEnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Crouch);
 		PlayerEnhancedInputComponent->BindAction(MagnetizeAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::MagnetizePressed);
-		PlayerEnhancedInputComponent->BindAction(BoostDirectionAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::BoostWithDirection);
-		PlayerEnhancedInputComponent->BindAction(BoostAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Boost);
+		PlayerEnhancedInputComponent->BindAction(BoostDirectionAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::BoostPressed);
 		PlayerEnhancedInputComponent->BindAction(EquipAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Equip);
-		PlayerEnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::Fire);
+		PlayerEnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Triggered, this, &ABasePawnPlayer::FirePressed);
 	}
 }
 
@@ -145,11 +144,13 @@ void ABasePawnPlayer::ShooterMovement()
 	Look(MoveToSend);
 	Jump(MoveToSend);
 	Magnetized(MoveToSend);
-
+	Boost(MoveToSend);
+	
 	Move_Internal(MoveToSend.MovementVector);
 	Look_Internal(MoveToSend.PitchVector);
 	Jump_Internal(MoveToSend.bJumped);
 	Magnetize_Internal(MoveToSend.bMagnetized);
+	Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost);
 	if(!HasAuthority())
 	{
 		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
@@ -347,55 +348,50 @@ void ABasePawnPlayer::Magnetize_Internal(bool bMagnetizedWasPressed)
 	}
 }
 
-void ABasePawnPlayer::BoostWithDirection(const FInputActionValue& ActionValue)
+void ABasePawnPlayer::BoostPressed(const FInputActionValue& ActionValue)
 {
-	const FVector BoostDirection = ActionValue.Get<FVector>();
-	if(!HasAuthority() && IsLocallyControlled())
+	bBoostPressed = true;
+	BoostDirection = ActionValue.Get<FVector>();
+}
+
+void ABasePawnPlayer::Boost(FShooterMove& OutMove)
+{
+	if(bBoostPressed)
 	{
-		Boost_Internal(BoostDirection);
-	}
-	if(HasAuthority() && IsLocallyControlled())
-	{
-		Boost_Internal(BoostDirection);
+		OutMove.BoostDirection = BoostDirection;
+		OutMove.bBoost = true;
+		bBoostPressed = false;
+		BoostDirection = FVector::ZeroVector;
 	}
 }
 
-void ABasePawnPlayer::Boost(const FInputActionValue& ActionValue)
+void ABasePawnPlayer::Boost_Internal(FVector ActionValue, bool bBoostWasPressed)
 {
-	if(!HasAuthority() && IsLocallyControlled())
+	if(bBoostWasPressed)
 	{
-		Boost_Internal(FVector::ZeroVector);
-	}
-	if(HasAuthority() && IsLocallyControlled())
-	{
-		Boost_Internal(FVector::ZeroVector);
-	}
-}
-
-void ABasePawnPlayer::Boost_Internal(FVector BoostDirection)
-{
-	bCanBoost = BoostCount >= MaxBoosts ? false : true;
-	if(bCanBoost)
-	{
-		if(FloorStatus == FShooterFloorStatus::NoFloorContact)
+		bCanBoost = BoostCount >= MaxBoosts ? false : true;
+		if(bCanBoost)
 		{
-			Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
-			BoostForce(BoostDirection);
-		}
-		else
-		{
-			MagnetizePressed(1.f);
-			BoostForce(BoostDirection);
-			GetWorldTimerManager().SetTimer(MagnetizeDelayForBoost, this, &ABasePawnPlayer::ContactedFloorMagnetizeDelay, MagnetizeDelay);
+			if(FloorStatus == FShooterFloorStatus::NoFloorContact)
+			{
+				Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
+				BoostForce(ActionValue);
+			}
+			else
+			{
+				MagnetizePressed(1.f);
+				BoostForce(ActionValue);
+				GetWorldTimerManager().SetTimer(MagnetizeDelayForBoost, this, &ABasePawnPlayer::ContactedFloorMagnetizeDelay, MagnetizeDelay);
+			}
 		}
 	}
 }
 
-void ABasePawnPlayer::BoostForce(const FVector BoostDirection)
+void ABasePawnPlayer::BoostForce(const FVector ActionValue)
 {
-	if(BoostDirection.Size() != 0.f)
+	if(ActionValue.Size() != 0.f)
 	{
-		const FVector NormalizedBoostDirection = BoostDirection.GetSafeNormal();
+		const FVector NormalizedBoostDirection = ActionValue.GetSafeNormal();
 		const FVector BoostVector((GetActorForwardVector() * NormalizedBoostDirection.X) +
 			(GetActorRightVector() * NormalizedBoostDirection.Y) +
 			(GetActorUpVector() * NormalizedBoostDirection.Z));
@@ -446,7 +442,7 @@ void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
 	
 }
 
-void ABasePawnPlayer::Fire(const FInputActionValue& ActionValue)
+void ABasePawnPlayer::FirePressed(const FInputActionValue& ActionValue)
 {
 	if(Combat && Combat->EquippedWeapon)
 	{
@@ -456,7 +452,7 @@ void ABasePawnPlayer::Fire(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
-	if(bIsMagnetized && static_cast<int>(FloorStatus) == 0)
+	if(bIsMagnetized && FloorStatus == FShooterFloorStatus::NoFloorContact)
 	{
 		float GravityDistance;
 		bool bIsAFloorBase = false;
@@ -796,6 +792,7 @@ void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 	Look_Internal(ClientMove.PitchVector);
 	Jump_Internal(ClientMove.bJumped);
 	Magnetize_Internal(ClientMove.bMagnetized);
+	Boost_Internal(ClientMove.BoostDirection, ClientMove.bBoost);
 	StatusOnServer.ShooterTransform = GetActorTransform();
 	StatusOnServer.Velocity = GetVelocity();
 	StatusOnServer.Torque = Capsule->GetPhysicsAngularVelocityInRadians();

@@ -38,7 +38,7 @@ struct FShooterMove
 	UPROPERTY()
 	bool bMagnetized = false;
 	UPROPERTY()
-	bool bDidBoost = false;
+	bool bBoost = false;
 	UPROPERTY()
 	FVector BoostDirection = FVector::ZeroVector;
 	UPROPERTY()
@@ -161,6 +161,8 @@ protected:
 	FVector2D PitchVector;
 	void Jump(FShooterMove& OutMove);
 	void Magnetized(FShooterMove& OutMove);
+	void Boost(FShooterMove& OutMove);
+	FVector BoostDirection;
 	
 	void MovePressed(const FInputActionValue& ActionValue);
 	void Move_Internal(FVector ActionValue);
@@ -187,7 +189,6 @@ protected:
 	void JumpPressed(const FInputActionValue& ActionValue);
 	bool bJumpPressed = false;
 	void Jump_Internal(bool bJumpWasPressed);
-	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float JumpVelocity = 40000.f;
 	
@@ -199,10 +200,11 @@ protected:
 	UPROPERTY(Replicated)
 	bool bIsMagnetized = false;
 
-	void BoostWithDirection(const FInputActionValue& ActionValue);
-	void Boost(const FInputActionValue& ActionValue);
-	void Boost_Internal(FVector BoostDirection);
-	void BoostForce(const FVector BoostDirection);
+
+	void BoostPressed(const FInputActionValue& ActionValue);
+	bool bBoostPressed = false;
+	void Boost_Internal(FVector ActionValue, bool bBoostWasPressed);
+	void BoostForce(const FVector ActionValue);
 	void ContactedFloorMagnetizeDelay();
 	FTimerHandle MagnetizeDelayForBoost;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -227,7 +229,7 @@ protected:
 	float AirFriction = 0.01f;
 
 	void Equip(const FInputActionValue& ActionValue);
-	void Fire(const FInputActionValue& ActionValue);
+	void FirePressed(const FInputActionValue& ActionValue);
 
 	virtual void PerformPlayerMovement();
 	
