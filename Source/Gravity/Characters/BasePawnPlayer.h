@@ -32,7 +32,11 @@ struct FShooterMove
 	UPROPERTY()
 	FVector MovementVector = FVector::ZeroVector;
 	UPROPERTY()
-	FVector2D PitchVector = FVector2D::ZeroVector;
+	float PitchRotation = 0.f;
+	UPROPERTY()
+	float AirSpin =  0.f;
+	UPROPERTY()
+	float YawRotation =  0.f;
 	UPROPERTY()
 	bool bJumped = false;
 	UPROPERTY()
@@ -64,6 +68,13 @@ struct FShooterStatus
 	
 };
 
+UENUM()
+enum class EShooterSpin : uint8
+{
+	FrontFlip UMETA(DisplayName = "Spin Forwards"),
+	BackFlip UMETA(DisplayName = "Spin Backwards"),
+	NoFlip UMETA(DisplayName = "Don't Spin"),
+};
 
 UCLASS()
 class GRAVITY_API ABasePawnPlayer : public APawn
@@ -75,7 +86,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const override;
-	FShooterFloorStatus FloorStatus = FShooterFloorStatus::NoFloorContact;
+	EShooterFloorStatus FloorStatus = EShooterFloorStatus::NoFloorContact;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -119,8 +130,6 @@ protected:
 	USkeletalMeshComponent* Skeleton;
 	UPROPERTY(EditAnywhere)
 	USpringArmComponent* SpringArm;
-	UPROPERTY(Replicated)
-	float SpringArmClientPitch;
 	UPROPERTY(EditAnywhere)
 	UCameraComponent* Camera;
 	UPROPERTY(EditAnywhere)
@@ -151,40 +160,6 @@ protected:
 	UInputMappingContext* CharacterMovementMapping;
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterCombatMapping;
-	
-
-	//Input Functions
-	void ShooterMovement();
-	void Move(FShooterMove& OutMove);
-	FVector MoveVector;
-	void Look(FShooterMove& OutMove);
-	FVector2D PitchVector;
-	void Jump(FShooterMove& OutMove);
-	void Magnetized(FShooterMove& OutMove);
-	void Boost(FShooterMove& OutMove);
-	FVector BoostDirection;
-	
-	void MovePressed(const FInputActionValue& ActionValue);
-	void Move_Internal(FVector ActionValue);
-	
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float GroundSpeed = 5000.f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float ForwardSpeed = 1.f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float BackwardsSpeed = 0.5f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float LateralSpeed = 0.5f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirSpeed = 200.f;
-
-	void LookActivated(const FInputActionValue& ActionValue);
-	void Look_Internal(FVector2D ActionValue);
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirRotationSpeed = 20.f;
-
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirForwardRollSpeed = 190000.f;
 	
 	void JumpPressed(const FInputActionValue& ActionValue);
 	bool bJumpPressed = false;
@@ -230,8 +205,6 @@ protected:
 
 	void Equip(const FInputActionValue& ActionValue);
 	void FirePressed(const FInputActionValue& ActionValue);
-
-	virtual void PerformPlayerMovement();
 	
 	virtual void PerformGravity(float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Gravity)
@@ -252,6 +225,68 @@ protected:
 	float KnockBackImpulse = 1.75f;
 
 private:
+	//Input Functions
+	const float FixedTimeStep = 1.f/60.f;
+	float AccumulatedDeltaTime = 0.f;
+	void ShooterMovement(float DeltaTime);
+	void Jump(FShooterMove& OutMove);
+	void Magnetized(FShooterMove& OutMove);
+	void Boost(FShooterMove& OutMove);
+	FVector BoostDirection;
+	//
+
+	//everything involved with pressing forward, left, right, backward
+	void MovePressed(const FInputActionValue& ActionValue);
+	void BuildMovement(FShooterMove& OutMove);
+	FVector MoveVector;
+	FVector Movement_Internal(const FVector ActionValue, float DeltaTime);
+	void TotalMovementInput(const FVector ActionValue, float DeltaTime);
+	FVector CalculateMovementVelocity(float DeltaTime);
+	FVector LastVelocity = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float GroundForwardSpeed = 1000.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float GroundBackwardSpeed = 500.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float GroundLateralSpeed = 500.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float GroundForwardLateralSpeed = 750.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float StoppingSpeed = 3.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float AccelerationSpeed = 4.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float AirSpeed = 2.5f;
+	//
+
+	//everything involved with mouse look rotation
+	void LookActivated(const FInputActionValue& ActionValue);
+	void BuildLook(FShooterMove& OutMove);
+	float PitchValue = 0.f;
+	float YawValue = 0.f;
+	UPROPERTY(Replicated)
+	float SpringArmClientPitch;
+	FRotator PitchLook_Internal(float ActionValueY, float DeltaTime);
+	float SpringArmPitch;
+	float SpringArmYaw;
+	UPROPERTY(EditAnywhere, Category = MouseMovement)
+	float SpringArmPitchSpeed = 10.f;
+	UPROPERTY(EditAnywhere, Category = MouseMovement)
+	float SpringArmPitchMax = 70.f;
+	UPROPERTY(EditAnywhere, Category = MouseMovement)
+	float SpringArmPitchMin = -75.f;
+	EShooterSpin ShooterSpin = EShooterSpin::NoFlip;
+	FRotator AddShooterSpin_Internal() const;
+	FRotator YawLook_Internal(float ActionValueX, float DeltaTime);
+	float LastYawRotation = 0.f;
+	UPROPERTY(EditAnywhere, Category=MouseMovement)
+	float AirRotationSpeed = 0.25f;
+	UPROPERTY(EditAnywhere, Category=MouseMovement)
+	float AirRotationMaxSpeed = 2.f;
+	UPROPERTY(EditAnywhere, Category=MouseMovement)
+	float AirPitchSpeed =2.f;
+	//
+	
 	UPROPERTY(VisibleAnywhere)
 	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
 	bool bHaveAGravity = false;
@@ -280,7 +315,7 @@ private:
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 	
-	UFUNCTION(Server, Unreliable)
+	UFUNCTION(Server, Reliable)
 	void SendServerMove(FShooterMove ClientMove);
 
 	TArray<FShooterMove> UnacknowledgedMoves;
@@ -297,15 +332,15 @@ private:
 public:
 	FORCEINLINE void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
 	FORCEINLINE void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
-	FORCEINLINE FShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
-	void SetFloorStatus(FShooterFloorStatus InFloorStatus);
+	FORCEINLINE EShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
+	void SetFloorStatus(EShooterFloorStatus InFloorStatus);
 	FORCEINLINE int32 GetGravitiesSize() const {return FloorGravities.Num(); }
 	FORCEINLINE void AddToFloorGravities(AFloorBase* GravityToAdd) {FloorGravities.Add(GravityToAdd);}
 	FORCEINLINE void RemoveFromFloorGravities(AFloorBase* GravityToRemove) 	{FloorGravities.Remove(GravityToRemove);}
 	FORCEINLINE int32 GetSpheresSize() const {return SphereFloors.Num(); }
 	FORCEINLINE void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
 	FORCEINLINE void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
-	float GetSpringArmPitch() const;
+	FORCEINLINE float GetSpringArmPitch() const { return SpringArmPitch; }
 	FORCEINLINE bool GetIsMagnetized() const {return bIsMagnetized;}
 	FORCEINLINE void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
 	FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }

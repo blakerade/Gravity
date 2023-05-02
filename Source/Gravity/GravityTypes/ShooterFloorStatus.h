@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 UENUM()
-enum class FShooterFloorStatus : uint8
+enum class EShooterFloorStatus : uint8
 {
 	NoFloorContact UMETA(DisplayName = "No Floor Contact"),
 	BaseFloorContact UMETA(DisplayName = "Base Floor Contact"),

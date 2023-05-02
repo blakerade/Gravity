@@ -42,7 +42,10 @@ void UShooterCombatComponent::BeginPlay()
 void UShooterCombatComponent::SetHUDCrossHairs()
 {
 	PC = PC == nullptr ? Cast<AGravityPlayerController>(GetWorld()->GetFirstPlayerController()) : PC;
-	ShooterHUD = ShooterHUD == nullptr ? Cast<AShooterHUD>(PC->GetHUD()) : ShooterHUD;
+	if(PC)
+	{
+		ShooterHUD = ShooterHUD == nullptr ? Cast<AShooterHUD>(PC->GetHUD()) : ShooterHUD;
+	}
 	if(EquippedWeapon && PC && ShooterHUD)
 	{
 		ShooterHUD->HUDPackage.CrosshairTop = EquippedWeapon->CrosshairTop;

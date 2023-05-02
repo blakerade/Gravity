@@ -76,7 +76,6 @@ void ABasePawnPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ABasePawnPlayer, StatusOnServer);
-	DOREPLIFETIME(ABasePawnPlayer, SpringArmClientPitch);
 	DOREPLIFETIME_CONDITION(ABasePawnPlayer, bIsMagnetized, COND_SkipOwner);
 }
 
@@ -103,19 +102,24 @@ void ABasePawnPlayer::BeginPlay()
 		Capsule->OnComponentHit.AddDynamic(this, &ABasePawnPlayer::OnFloorHit);
 	}
 	OnTakeAnyDamage.AddDynamic(this, &ABasePawnPlayer::PassDamageToHealth);
+	SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
+	SpringArmYaw = SpringArm->GetRelativeRotation().Yaw;
 }
 
 void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if(IsLocallyControlled())
+	//current fixed time step of 60 per second
+	AccumulatedDeltaTime += DeltaTime;
+	if(AccumulatedDeltaTime >= FixedTimeStep)
 	{
-		ShooterMovement();
+		ShooterMovement(FixedTimeStep);
+		PerformGravity(FixedTimeStep);
+		FindSphere();
+		SphereFloorContactedGravity(FixedTimeStep);
 	}
-	PerformGravity(DeltaTime);
-	FindSphere();
-	SphereFloorContactedGravity(DeltaTime);
+	UE_LOG(LogTemp, Warning, TEXT("%f"), LastVelocity.Size());
 }
 
 void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -137,33 +141,41 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 }
 
 
-void ABasePawnPlayer::ShooterMovement()
+void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 {
-	FShooterMove MoveToSend;
-	Move(MoveToSend);
-	Look(MoveToSend);
-	Jump(MoveToSend);
-	Magnetized(MoveToSend);
-	Boost(MoveToSend);
-	
-	Move_Internal(MoveToSend.MovementVector);
-	Look_Internal(MoveToSend.PitchVector);
-	Jump_Internal(MoveToSend.bJumped);
-	Magnetize_Internal(MoveToSend.bMagnetized);
-	Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost);
-	if(!HasAuthority())
+	if(IsLocallyControlled())
 	{
+		//build the move to either execute or send to the server
+		FShooterMove MoveToSend;
+		BuildMovement(MoveToSend);
+		BuildLook(MoveToSend);
+		Jump(MoveToSend);
+		Magnetized(MoveToSend);
+		Boost(MoveToSend);
+
+		AddActorWorldOffset(Movement_Internal(MoveToSend.MovementVector, DeltaTime));
+		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, DeltaTime));
+		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
+		AddActorLocalRotation(AddShooterSpin_Internal());
+		Jump_Internal(MoveToSend.bJumped);
+		Magnetize_Internal(MoveToSend.bMagnetized);
+		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost);
 		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
-		UnacknowledgedMoves.Add(MoveToSend);
-		SendServerMove(MoveToSend);
+		
+		if(!HasAuthority())
+		{
+			UnacknowledgedMoves.Add(MoveToSend);
+			SendServerMove(MoveToSend);
+		}
+		if(HasAuthority())
+		{
+			StatusOnServer.ShooterTransform = GetActorTransform();
+			StatusOnServer.Velocity = GetVelocity();
+			StatusOnServer.Torque = Capsule->GetPhysicsAngularVelocityInRadians();
+			StatusOnServer.bMagnetized = bIsMagnetized;
+		}
 	}
-	if(HasAuthority())
-	{
-		StatusOnServer.ShooterTransform = GetActorTransform();
-		StatusOnServer.Velocity = GetVelocity();
-		StatusOnServer.Torque = Capsule->GetPhysicsAngularVelocityInRadians();
-		StatusOnServer.bMagnetized = bIsMagnetized;
-	}
+	
 }
 
 void ABasePawnPlayer::MovePressed(const FInputActionValue& ActionValue)
@@ -171,106 +183,127 @@ void ABasePawnPlayer::MovePressed(const FInputActionValue& ActionValue)
 	MoveVector = ActionValue.Get<FVector>();
 }
 
-void ABasePawnPlayer::Move(FShooterMove& OutMove)
+void ABasePawnPlayer::BuildMovement(FShooterMove& OutMove)
 {
 	OutMove.MovementVector = MoveVector;
 	MoveVector = FVector::ZeroVector;
 }
 
-void ABasePawnPlayer::Move_Internal(FVector ActionValue)
+FVector ABasePawnPlayer::Movement_Internal(const FVector ActionValue, float DeltaTime)
 {
-	//Adds to ControlInputValue, which is used in PerformPlayerMovement
-	//Add differences for forward/backwards/lateral movement and if we are in the air or not
-	if(FloorStatus != FShooterFloorStatus::NoFloorContact) //if contacted with a floor
-	{
-		AddMovementInput(GetActorRightVector() * ActionValue.Y * LateralSpeed);
-		if(ActionValue.X > 0.f)
-		{
-			AddMovementInput(GetActorForwardVector() * ActionValue.X * ForwardSpeed);
-		}
-		else if(ActionValue.X < 0.f)
-		{
-			AddMovementInput(GetActorForwardVector() * ActionValue.X * BackwardsSpeed);
-		}
-	}
-	else
-	{
-		AddMovementInput(GetActorForwardVector() * ActionValue.X);
-		AddMovementInput(GetActorRightVector() * ActionValue.Y);
-		AddMovementInput(GetActorUpVector() * ActionValue.Z);
-	}
-	PerformPlayerMovement();
+	TotalMovementInput(ActionValue, DeltaTime);
+	const FVector MovementVelocity = CalculateMovementVelocity(DeltaTime);
+	ConsumeMovementInputVector();
+	return MovementVelocity;
 }
 
-void ABasePawnPlayer::PerformPlayerMovement()
+void ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, float DeltaTime)
 {
-	if(FloorStatus == FShooterFloorStatus::NoFloorContact) //if not contacted with floor
+	if(FloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
 	{
-		Capsule->AddImpulse(ControlInputVector * AirSpeed);
-		ConsumeMovementInputVector();
+		if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
+		{
+			//if just going forward, go GroundForwardSpeed
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * GroundForwardSpeed * DeltaTime);
+		}
+		if(ActionValue.X > 0.f && ActionValue.Y != 0.f)
+		{
+			//if going forward and any lateral input, go a constant ForwardLateralSpeed
+			AddMovementInput(GetActorRightVector() * ActionValue.Y * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+		}
+		if(ActionValue.X == 0.f && ActionValue.Y != 0.f)
+		{
+			//if not going forward and any lateral input, go a constant GroundLateralSpeed
+			AddMovementInput(GetActorRightVector() * ActionValue.Y * GroundLateralSpeed * DeltaTime);
+		}
+		if(ActionValue.X < 0.f)
+		{
+			//if going backwards at all, go the GroundBackwardSpeed
+			AddMovementInput(GetActorRightVector() * ActionValue.Y * (GroundBackwardSpeed/2.f) * DeltaTime);
+			AddMovementInput(GetActorForwardVector() * ActionValue.X * (GroundBackwardSpeed/2.f) * DeltaTime);
+		}
 	}
-	else if(FloorStatus != FShooterFloorStatus::NoFloorContact && bIsMagnetized)//if contacted with floor and magnetized
+	else //if not contacted with a floor
 	{
-		Capsule->AddImpulse(ControlInputVector * GroundSpeed);
-		ConsumeMovementInputVector();
+		AddMovementInput(GetActorForwardVector() * ActionValue.X * DeltaTime);
+		AddMovementInput(GetActorRightVector() * ActionValue.Y * DeltaTime);
+		AddMovementInput(GetActorUpVector() * ActionValue.Z * DeltaTime);
 	}
+}
+
+FVector ABasePawnPlayer::CalculateMovementVelocity(float DeltaTime)
+{
+	if(FloorStatus != EShooterFloorStatus::NoFloorContact && bIsMagnetized) //if contacted with floor and magnetized
+	{
+		if(ControlInputVector.Size() == 0.f)
+		{
+			return LastVelocity = FMath::VInterpTo(LastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
+		}
+		return LastVelocity = FMath::VInterpTo(LastVelocity, ControlInputVector, DeltaTime, AccelerationSpeed);
+	}
+	if(ControlInputVector.Size() == 0.f)
+	{
+		return LastVelocity;
+	}
+	return LastVelocity += (ControlInputVector * AirSpeed);
 }
 
 void ABasePawnPlayer::LookActivated(const FInputActionValue& ActionValue)
 {
-	PitchVector = ActionValue.Get<FVector2D>();
+	PitchValue = ActionValue.Get<FVector2D>().Y;
+	YawValue = ActionValue.Get<FVector2D>().X;
 }
 
-
-void ABasePawnPlayer::Look(FShooterMove& OutMove)
+void ABasePawnPlayer::BuildLook(FShooterMove& OutMove)
 {
-	OutMove.PitchVector = PitchVector;
-	PitchVector = FVector2D::ZeroVector;
+	OutMove.YawRotation = YawValue;
+	OutMove.PitchRotation = PitchValue;
+	PitchValue = 0.f;
+	YawValue = 0.f;
 }
 
-void ABasePawnPlayer::Look_Internal(FVector2D ActionValue)
+FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, float DeltaTime)
 {
-	if(FloorStatus != FShooterFloorStatus::NoFloorContact) //We are contacted to a floor
+	SpringArmPitch = FMath::Clamp(SpringArmPitch + (ActionValueY * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
+	if(SpringArmPitch > (SpringArmPitchMax - 3.f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		//Have to Rotate the actor without controller because controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
-		AddActorLocalRotation(FRotator(0.f,ActionValue.X,0.f));
+		ShooterSpin = EShooterSpin::BackFlip;
 	}
-	else //We are not contacted to a floor
+	else if(SpringArmPitch < (SpringArmPitchMin + 3.f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		Capsule->AddTorqueInDegrees(GetActorUpVector() * AirRotationSpeed * ActionValue.X, NAME_None, true);
+		ShooterSpin = EShooterSpin::FrontFlip;
 	}
-	
-	//Have to Rotate the SpringArm without controller because the controller will only rotate in World coordinates causing the character to improperly add yaw and pitch
-	const float SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
-	if(SpringArmPitch <= -75.f)
+	return FRotator(SpringArmPitch, SpringArmYaw, 0.f);
+}
+
+FRotator ABasePawnPlayer::AddShooterSpin_Internal() const
+{
+	switch (ShooterSpin)
 	{
-		//this if is for how far to look down
-		if(ActionValue.Y >= 0.f)
-		{
-			SpringArm->AddLocalRotation(FRotator(ActionValue.Y,0.f,0.f));
-		}
-		else if(ActionValue.Y <= 0.f && FloorStatus == FShooterFloorStatus::NoFloorContact && !bIsMagnetized)
-		{
-			Capsule->AddTorqueInRadians(GetActorRightVector() * AirForwardRollSpeed);
-		}
+	case EShooterSpin::BackFlip:
+		return FRotator(AirPitchSpeed, 0.f, 0.f);
+	case EShooterSpin::FrontFlip:
+		return FRotator(-AirPitchSpeed, 0.f, 0.f);
+	default:
+		return FRotator::ZeroRotator;
 	}
-	else if(SpringArmPitch >= 70.f)
+}
+
+FRotator ABasePawnPlayer::YawLook_Internal(float ActionValueX, float DeltaTime)
+{
+	//We are contacted to a floor
+	if(FloorStatus != EShooterFloorStatus::NoFloorContact)
 	{
-		//this if is for how far to look up
-		if(ActionValue.Y <= 0.f)
-		{
-			SpringArm->AddLocalRotation(FRotator(ActionValue.Y,0.f,0.f));
-		}
-		else if(ActionValue.Y >= 0.f && FloorStatus == FShooterFloorStatus::NoFloorContact && !bIsMagnetized)
-		{
-			Capsule->AddTorqueInRadians(GetActorRightVector() * -AirForwardRollSpeed);
-		}
+		return FRotator(0.f, ActionValueX, 0.f);
 	}
-	else
+	//We are not contacted to a floor
+	if(ActionValueX == 0.f)
 	{
-		SpringArm->AddLocalRotation(FRotator(ActionValue.Y,0.f,0.f));
+		return FRotator(0.f, LastYawRotation, 0.f);
 	}
-	SpringArmClientPitch = SpringArmPitch;
+	const float NewYawRotation = FMath::Clamp(LastYawRotation + ActionValueX * AirRotationSpeed * DeltaTime, -AirRotationMaxSpeed, AirRotationMaxSpeed);
+	return FRotator(0.f, LastYawRotation = NewYawRotation, 0.f);
 }
 
 void ABasePawnPlayer::JumpPressed(const FInputActionValue& ActionValue)
@@ -291,9 +324,9 @@ void ABasePawnPlayer::Jump_Internal(bool bJumpWasPressed)
 {
 	if(bJumpWasPressed)
 	{
-		if(FloorStatus != FShooterFloorStatus::NoFloorContact && bIsMagnetized) //if we are in contact with a floor
+		if(FloorStatus != EShooterFloorStatus::NoFloorContact && bIsMagnetized) //if we are in contact with a floor
 		{
-			SetFloorStatus(FShooterFloorStatus::NoFloorContact);
+			SetFloorStatus(EShooterFloorStatus::NoFloorContact);
 			Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
 			Capsule->SetLinearDamping(AirFriction);
 		}
@@ -335,7 +368,7 @@ void ABasePawnPlayer::Magnetize_Internal(bool bMagnetizedWasPressed)
 		if(!bIsMagnetized)
 		{
 			ZeroOutCurrentGravity();
-			SetFloorStatus(FShooterFloorStatus::NoFloorContact);
+			SetFloorStatus(EShooterFloorStatus::NoFloorContact);
 		}
 		else if(FloorGravities.Num() != 0 || SphereFloors.Num() != 0)
 		{
@@ -372,7 +405,7 @@ void ABasePawnPlayer::Boost_Internal(FVector ActionValue, bool bBoostWasPressed)
 		bCanBoost = BoostCount >= MaxBoosts ? false : true;
 		if(bCanBoost)
 		{
-			if(FloorStatus == FShooterFloorStatus::NoFloorContact)
+			if(FloorStatus == EShooterFloorStatus::NoFloorContact)
 			{
 				Capsule->SetPhysicsLinearVelocity(GetVelocity() / BoostCurrentVelocityReduction);
 				BoostForce(ActionValue);
@@ -452,7 +485,7 @@ void ABasePawnPlayer::FirePressed(const FInputActionValue& ActionValue)
 
 void ABasePawnPlayer::PerformGravity(float DeltaTime)
 {
-	if(bIsMagnetized && FloorStatus == FShooterFloorStatus::NoFloorContact)
+	if(bIsMagnetized && FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
 		float GravityDistance;
 		bool bIsAFloorBase = false;
@@ -676,83 +709,72 @@ void ABasePawnPlayer::OrientToGravity(FVector GravityToOrientTo, float DeltaTime
 
 void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if(AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
+	if(FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		if(FloorStatus == FShooterFloorStatus::NoFloorContact && Capsule && bIsMagnetized)	
+		if(AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 		{
-			if(Floor->GetFloorGravity() == CurrentGravity || Floor->GetFloorGravity() == -CurrentGravity)
+			ShooterSpin = EShooterSpin::NoFlip;
+			if(Capsule && bIsMagnetized)	
 			{
-				if(FVector::DotProduct(-GetActorUpVector(), CurrentGravity.GetSafeNormal()) < 0.7f)
+				if(Floor->GetFloorGravity() == CurrentGravity || Floor->GetFloorGravity() == -CurrentGravity)
 				{
-					MagnetizePressed(1.f);
-					ZeroOutCurrentGravity();
-					Capsule->AddImpulse(NormalImpulse * KnockBackImpulse);
-					Capsule->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector);
-					// Capsule->AddTorqueInRadians(FVector(0.f, 0.f, 45.f));
-				}
-				else
-				{
-					//If the Rinterpto isn't done we still need to be rotated corrected when we land
-					SetActorRotation(FeetToGravity.Rotator());
-					//Important bool for other functionality
-					SetFloorStatus(FShooterFloorStatus::BaseFloorContact);
-					//Stops the capsule from falling over
-					Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-					//Set damping to a high value so that when we are walking it doesn't feel like we are skating
-					Capsule->SetLinearDamping(FloorFriction);
+					if(FVector::DotProduct(-GetActorUpVector(), CurrentGravity.GetSafeNormal()) < 0.7f)
+					{
+						MagnetizePressed(1.f);
+						ZeroOutCurrentGravity();
+					}
+					else
+					{
+						LastVelocity = FVector::ZeroVector;
+						ConsumeMovementInputVector();
+						LastYawRotation = 0.f;
+						//If the Rinterpto isn't done we still need to be rotated corrected when we land
+						SetActorRotation(FeetToGravity.Rotator());
+						//Important bool for other functionality
+						SetFloorStatus(EShooterFloorStatus::BaseFloorContact);
+						//Stops the capsule from falling over
+					}
 				}
 			}
 		}
-	}
-	if(AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
-	{
-		if(Capsule && bIsMagnetized)
+		if(AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
+		{
+			if(Capsule && bIsMagnetized)
+			{
+				//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
+				SetActorRotation(FRotationMatrix::MakeFromZX(SphereCenter - GetActorLocation(), GetActorForwardVector()).Rotator());
+				//Important bool for other functionality
+				SetFloorStatus(EShooterFloorStatus::SphereLevelContact);
+				//Stops the capsule from falling over
+				Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+				//Set damping to a high value so that when we are walking it doesn't feel like we are skating
+				Capsule->SetLinearDamping(FloorFriction);
+			}
+		}
+		if(ASphereFloorBase* SphereFloor = Cast<ASphereFloorBase>(OtherActor))
 		{
 			//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
-			SetActorRotation(FRotationMatrix::MakeFromZX(SphereCenter - GetActorLocation(), GetActorForwardVector()).Rotator());
+			SetActorRotation(FRotationMatrix::MakeFromZX(GetActorLocation() - SphereFloor->GetActorLocation(), GetActorForwardVector()).Rotator());
 			//Important bool for other functionality
-			SetFloorStatus(FShooterFloorStatus::SphereLevelContact);
+			SetFloorStatus(EShooterFloorStatus::SphereFloorContact);
 			//Stops the capsule from falling over
 			Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 			//Set damping to a high value so that when we are walking it doesn't feel like we are skating
 			Capsule->SetLinearDamping(FloorFriction);
+			//Set what sphere floor with are contacted with so that we can continue to be pulled and oriented to it
+			SphereContactedWith = SphereFloor;
 		}
-	}
-	if(ASphereFloorBase* SphereFloor = Cast<ASphereFloorBase>(OtherActor))
-	{
-		//If the Rinterpto isn't done we still need to be rotated corrected when we land //THIS NEEDS TO BE FIXED
-		SetActorRotation(FRotationMatrix::MakeFromZX(GetActorLocation() - SphereFloor->GetActorLocation(), GetActorForwardVector()).Rotator());
-		//Important bool for other functionality
-		SetFloorStatus(FShooterFloorStatus::SphereFloorContact);
-		//Stops the capsule from falling over
-		Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-		//Set damping to a high value so that when we are walking it doesn't feel like we are skating
-		Capsule->SetLinearDamping(FloorFriction);
-		//Set what sphere floor with are contacted with so that we can continue to be pulled and oriented to it
-		SphereContactedWith = SphereFloor;
 	}
 }
 
 void ABasePawnPlayer::SphereFloorContactedGravity(float DeltaTime)
 {
-	if(FloorStatus == FShooterFloorStatus::SphereFloorContact && SphereContactedWith)
+	if(FloorStatus == EShooterFloorStatus::SphereFloorContact && SphereContactedWith)
 	{
 		//Pull towards the center of sphere floor while we are contacted with the floor
 		const FVector ToSphereGravity = (SphereContactedWith->GetActorLocation() - GetActorLocation()).GetSafeNormal();
 		Capsule->AddForce(ToSphereGravity * SphereFloorContactedForceCorrection);
 		OrientToGravity(ToSphereGravity, DeltaTime, 1.f, bHaveAGravity);
-	}
-}
-
-float ABasePawnPlayer::GetSpringArmPitch() const
-{
-	if(HasAuthority())
-	{
-		return SpringArm->GetRelativeRotation().Pitch;
-	}
-	else
-	{
-		return SpringArmClientPitch;
 	}
 }
 
@@ -773,10 +795,10 @@ void ABasePawnPlayer::PassDamageToHealth(AActor* DamagedActor, float Damage, con
 	Health->TakeDamage(DamagedActor, Damage, DamageType, InstigatedBy, DamageCauser);
 }
 
-void ABasePawnPlayer::SetFloorStatus(FShooterFloorStatus InFloorStatus)
+void ABasePawnPlayer::SetFloorStatus(EShooterFloorStatus InFloorStatus)
 {
 	FloorStatus = InFloorStatus;
-	if(FloorStatus == FShooterFloorStatus::NoFloorContact)
+	if(FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
 		Capsule->SetLinearDamping(AirFriction);
 	}
@@ -788,8 +810,8 @@ void ABasePawnPlayer::SetFloorStatus(FShooterFloorStatus InFloorStatus)
 
 void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 {
-	Move_Internal(ClientMove.MovementVector);
-	Look_Internal(ClientMove.PitchVector);
+	Movement_Internal(ClientMove.MovementVector, FixedTimeStep);
+	// Look_Internal(ClientMove.PitchVector);
 	Jump_Internal(ClientMove.bJumped);
 	Magnetize_Internal(ClientMove.bMagnetized);
 	Boost_Internal(ClientMove.BoostDirection, ClientMove.bBoost);
@@ -805,6 +827,7 @@ void ABasePawnPlayer::OnRep_StatusOnServer()
 	SetActorTransform(StatusOnServer.ShooterTransform);
 	Capsule->SetPhysicsLinearVelocity(StatusOnServer.Velocity);
 	Capsule->SetPhysicsAngularVelocityInRadians(StatusOnServer.Torque);
+	bIsMagnetized = StatusOnServer.bMagnetized;
 	ClearAcknowledgedMoves();
 	PlayUnacknowledgedMoves();
 }
@@ -826,7 +849,9 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 {
 	for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
 	{
-		Move_Internal(MoveToPlay.MovementVector);
-		Look_Internal(MoveToPlay.PitchVector);
+		Movement_Internal(MoveToPlay.MovementVector, FixedTimeStep);
+		Jump_Internal(MoveToPlay.bJumped);
+		Magnetize_Internal(MoveToPlay.bMagnetized);
+		Boost_Internal(MoveToPlay.BoostDirection, MoveToPlay.bBoost);
 	}
 }
