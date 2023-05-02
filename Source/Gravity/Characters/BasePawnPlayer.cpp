@@ -155,8 +155,8 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 
 		AddActorWorldOffset(Movement_Internal(MoveToSend.MovementVector, DeltaTime));
 		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, DeltaTime));
+		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
-		AddActorLocalRotation(AddShooterSpin_Internal());
 		Jump_Internal(MoveToSend.bJumped);
 		Magnetize_Internal(MoveToSend.bMagnetized);
 		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost);
@@ -266,28 +266,44 @@ void ABasePawnPlayer::BuildLook(FShooterMove& OutMove)
 FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, float DeltaTime)
 {
 	SpringArmPitch = FMath::Clamp(SpringArmPitch + (ActionValueY * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
-	if(SpringArmPitch > (SpringArmPitchMax - 3.f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
+	if(SpringArmPitch > (SpringArmPitchMax - 1.5f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
 		ShooterSpin = EShooterSpin::BackFlip;
 	}
-	else if(SpringArmPitch < (SpringArmPitchMin + 3.f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
+	else if(SpringArmPitch < (SpringArmPitchMin + 1.5f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
 		ShooterSpin = EShooterSpin::FrontFlip;
 	}
 	return FRotator(SpringArmPitch, SpringArmYaw, 0.f);
 }
 
-FRotator ABasePawnPlayer::AddShooterSpin_Internal() const
+FRotator ABasePawnPlayer::AddShooterSpin_Internal(float ActionValueY, float DeltaTime)
 {
-	switch (ShooterSpin)
+	//We are not contacted to a floor
+	if(FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-	case EShooterSpin::BackFlip:
-		return FRotator(AirPitchSpeed, 0.f, 0.f);
-	case EShooterSpin::FrontFlip:
-		return FRotator(-AirPitchSpeed, 0.f, 0.f);
-	default:
-		return FRotator::ZeroRotator;
+		float NewPitchRotation;
+		switch (ShooterSpin)
+		{
+		case EShooterSpin::BackFlip:
+			if(ActionValueY <= 0.f)
+			{
+				return FRotator(LastPitchRotation, 0.f, 0.f);
+			}
+			NewPitchRotation = FMath::Clamp(LastPitchRotation + ActionValueY * AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
+			return FRotator(LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+		case EShooterSpin::FrontFlip:
+			if(ActionValueY >= 0.f)
+			{
+				return FRotator(LastPitchRotation, 0.f, 0.f);
+			}
+			NewPitchRotation = FMath::Clamp(LastPitchRotation - ActionValueY * -AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
+			return FRotator(LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+		default:
+			return FRotator(LastPitchRotation, 0.f, 0.f);
+		}
 	}
+	return FRotator(LastPitchRotation, 0.f, 0.f);
 }
 
 FRotator ABasePawnPlayer::YawLook_Internal(float ActionValueX, float DeltaTime)

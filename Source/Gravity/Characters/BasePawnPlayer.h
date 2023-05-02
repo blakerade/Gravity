@@ -276,15 +276,18 @@ private:
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float SpringArmPitchMin = -75.f;
 	EShooterSpin ShooterSpin = EShooterSpin::NoFlip;
-	FRotator AddShooterSpin_Internal() const;
+	FRotator AddShooterSpin_Internal(float ActionValueY, float DeltaTime);
+	float LastPitchRotation = 0.f;
+	UPROPERTY(EditAnywhere, Category=MouseMovement)
+	float AirPitchSpeed = 2.f;
+	UPROPERTY(EditAnywhere, Category = MouseMovement)
+	float MaxPitchSpeed = 5.f;
 	FRotator YawLook_Internal(float ActionValueX, float DeltaTime);
 	float LastYawRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationSpeed = 0.25f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationMaxSpeed = 2.f;
-	UPROPERTY(EditAnywhere, Category=MouseMovement)
-	float AirPitchSpeed =2.f;
 	//
 	
 	UPROPERTY(VisibleAnywhere)
