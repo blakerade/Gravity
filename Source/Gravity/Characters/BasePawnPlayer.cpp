@@ -175,7 +175,6 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 			StatusOnServer.bMagnetized = bIsMagnetized;
 		}
 	}
-	
 }
 
 void ABasePawnPlayer::MovePressed(const FInputActionValue& ActionValue)
@@ -274,6 +273,10 @@ FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, float DeltaTime
 	{
 		ShooterSpin = EShooterSpin::FrontFlip;
 	}
+	else
+	{
+		ShooterSpin = EShooterSpin::NoFlip;
+	}
 	return FRotator(SpringArmPitch, SpringArmYaw, 0.f);
 }
 
@@ -299,6 +302,8 @@ FRotator ABasePawnPlayer::AddShooterSpin_Internal(float ActionValueY, float Delt
 			}
 			NewPitchRotation = FMath::Clamp(LastPitchRotation - ActionValueY * -AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
 			return FRotator(LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+		case EShooterSpin::NoFlip:
+			return FRotator(LastPitchRotation, 0.f, 0.f);
 		default:
 			return FRotator(LastPitchRotation, 0.f, 0.f);
 		}
@@ -730,6 +735,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 		if(AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 		{
 			ShooterSpin = EShooterSpin::NoFlip;
+			LastPitchRotation = 0.f;
 			if(Capsule && bIsMagnetized)	
 			{
 				if(Floor->GetFloorGravity() == CurrentGravity || Floor->GetFloorGravity() == -CurrentGravity)
