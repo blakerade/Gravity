@@ -14,6 +14,7 @@
 #include "Gravity/Components/ShooterCombatComponent.h"
 #include "Gravity/Components/ShooterHealthComponent.h"
 #include "Gravity/Flooring/FloorBase.h"
+#include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Weapons/WeaponBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
@@ -584,13 +585,20 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 	{
 		if(FVector::DotProduct(GetActorUpVector(), Hit.ImpactNormal) > 0.7f)
 		{
-			if(AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
+			if(const ASphereFloorBase* SphereFloor = Cast<ASphereFloorBase>(OtherActor))
 			{
-				float DotProductResult = FVector::DotProduct(Floor->GetActorUpVector(), Hit.ImpactNormal);
-				float Epsilon = 0.001f;
-
-				bool bIsTheMainSurface = FMath::IsNearlyEqual(DotProductResult, 1.f, Epsilon) || FMath::IsNearlyEqual(DotProductResult, -1.f, Epsilon);
-				if(bIsTheMainSurface)
+				SetFloorStatus(EShooterFloorStatus::SphereFloorContact);
+				ShooterSpin = EShooterSpin::NoFlip;
+				LastPitchRotation = 0.f;
+				LastYawRotation = 0.f;
+				LastVelocity = FVector::ZeroVector;
+				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
+			}
+			else if(const AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
+			{
+				const float DotProductResult = FVector::DotProduct(Floor->GetActorUpVector(), Hit.ImpactNormal);
+				constexpr  float Epsilon = 0.001f;
+				if(FMath::IsNearlyEqual(DotProductResult, 1.f, Epsilon) || FMath::IsNearlyEqual(DotProductResult, -1.f, Epsilon))
 				{
 					SetFloorStatus(EShooterFloorStatus::BaseFloorContact);
 					ShooterSpin = EShooterSpin::NoFlip;
