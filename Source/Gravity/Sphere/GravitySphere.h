@@ -19,24 +19,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	UPROPERTY(EditAnywhere)
-	USphereComponent* GravityTrigger;
-
-	UFUNCTION()
-	virtual void SetPawnIsInSphere(UPrimitiveComponent* OverlappedComponent,
-		AActor* OtherActor,
-		UPrimitiveComponent* OtherComp,
-		int32 OtherBodyIndex,
-		bool bFromSweep,
-		const FHitResult & SweepResult);
-
-	UFUNCTION()
-	virtual void SetPawnIsOutOfSphere(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-
-	UPROPERTY(EditAnywhere)
-	FVector FlooringGravity;
-
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = Gravity)
 	float GravityStrength = 10000.f;
 
 private:

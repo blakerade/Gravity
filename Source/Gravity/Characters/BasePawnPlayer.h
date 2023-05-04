@@ -206,14 +206,6 @@ protected:
 	void Equip(const FInputActionValue& ActionValue);
 	void FirePressed(const FInputActionValue& ActionValue);
 	
-	virtual void PerformGravity(float DeltaTime);
-	UPROPERTY(EditAnywhere, Category=Gravity)
-	float SphereGravityStrength = 3000.f;
-	UPROPERTY(EditAnywhere, Category=Gravity)
-	float SphereFloorGravityStrength = 30.f;
-	UPROPERTY(EditAnywhere, Category=Gravity)
-	float SphereFloorContactedForceCorrection = 300000.f;
-	
 	UFUNCTION()
 	void OnFloorHit(UPrimitiveComponent* HitComponent,
 		AActor* OtherActor,
@@ -289,29 +281,35 @@ private:
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationMaxSpeed = 2.f;
 	//
-	
-	UPROPERTY(VisibleAnywhere)
-	FVector CurrentGravity = FVector(0.f, 0.f, 0.f);
-	bool bHaveAGravity = false;
 
-	TArray<AFloorBase*> FloorGravities;
-	TArray<ASphereFloorBase*> SphereFloors;
-	
+
+
+	//everything involved with gravity
+	FTransform PerformGravity(FTransform InActorTransform, float DeltaTime);
+	float ClosestDistanceToFloor = FLT_MAX;
 	UPROPERTY()
-	ASphereFloorBase* SphereContactedWith;
-	bool bContactedWithLevelSphere = false;
+	AActor* ClosestFloor;
+	FHitResult FloorHitResult;
+	FVector CurrentGravity = FVector::ZeroVector;
+	void FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection);
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float SphereTraceRadius = 750.f;
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float GravityDistanceRadius = 2500.f;
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float GravityForceCurve = 3.f;
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float ImpactEdgeAdjustment = 5.f;
+	FRotator OrientToGravity(FRotator InActorRotator, float DeltaTime);
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float SlerpSpeed = 1.f;
+	FVector GravityForce(FVector InActorLocation, float DeltaTime);
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float GravityStrength = 5.f;
+	//
+
+
 	
-	FMatrix FeetToGravity;
-
-	bool bIsInsideSphere = false;
-
-	UPROPERTY()
-	AGravitySphere* Sphere;
-	FVector SphereCenter;
-	void FindSphere();
-	void FindClosestGravity(float& OutDistanceToGravity, bool& OutIsAFloorBase);
-	void IsThereACloserSphereFloor(bool bHaveAFloorBase, float& InAndOutGravityDistanceCheck, bool& OutSphereFloorOverride);
-	void OrientToGravity(FVector CurrentGravity, float DeltaTime, float DistanceToGravity, bool bIsThereAFloor);
 	UPROPERTY(EditAnywhere, Category = Movement)
 	float RotationSpeedDampener = 100.f;
 	void SphereFloorContactedGravity(float DeltaTime);
@@ -325,7 +323,8 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
 	FShooterStatus StatusOnServer;
 
-	
+
+	void ZeroOutGravity();
 	UFUNCTION()
 	void OnRep_StatusOnServer();
 	void ClearAcknowledgedMoves();
@@ -333,19 +332,10 @@ private:
 	
 	
 public:
-	FORCEINLINE void SetIsInSphere(bool bWithinSphere) {bIsInsideSphere = bWithinSphere;}
-	FORCEINLINE void ZeroOutCurrentGravity() {CurrentGravity = FVector::ZeroVector, bHaveAGravity = false;}
 	FORCEINLINE EShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
 	void SetFloorStatus(EShooterFloorStatus InFloorStatus);
-	FORCEINLINE int32 GetGravitiesSize() const {return FloorGravities.Num(); }
-	FORCEINLINE void AddToFloorGravities(AFloorBase* GravityToAdd) {FloorGravities.Add(GravityToAdd);}
-	FORCEINLINE void RemoveFromFloorGravities(AFloorBase* GravityToRemove) 	{FloorGravities.Remove(GravityToRemove);}
-	FORCEINLINE int32 GetSpheresSize() const {return SphereFloors.Num(); }
-	FORCEINLINE void AddToSpheres(ASphereFloorBase* SphereToAdd) {SphereFloors.Add(SphereToAdd);}
-	FORCEINLINE void RemoveFromSphere(ASphereFloorBase* SphereToRemove) {SphereFloors.Remove(SphereToRemove); }
 	FORCEINLINE float GetSpringArmPitch() const { return SpringArmPitch; }
 	FORCEINLINE bool GetIsMagnetized() const {return bIsMagnetized;}
-	FORCEINLINE void SetHaveAGravity(bool ResetGravity) { bHaveAGravity = ResetGravity; }
 	FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
 	FVector GetHitTarget();
