@@ -235,9 +235,9 @@ private:
 	FVector MoveVector;
 	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
 	void TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
-	void AdjustForSphereFloor(const float ActionValue, FTransform ActorTransform, float DeltaTime,
+	void AdjustForSphereFloor(const float ActionValue, float MovementSpeed, FTransform ActorTransform, float DeltaTime,
 								const FVector InputDirectionVector, const FVector RotationVector,
-								FVector& AdjustedInputVector);
+								FVector& AdjustedInputVector) const;
 	FVector CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime);
 	FVector LastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -322,7 +322,6 @@ private:
 	
 	UPROPERTY(EditAnywhere, Category = Movement)
 	float RotationSpeedDampener = 100.f;
-	void SphereFloorContactedGravity(float DeltaTime);
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 	
