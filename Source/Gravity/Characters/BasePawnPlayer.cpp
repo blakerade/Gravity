@@ -205,7 +205,7 @@ void ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, FTransform A
 
 	if(FloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
 	{
-		if(FloorStatus == EShooterFloorStatus::BaseFloorContact || FloorStatus == EShooterFloorStatus::SphereLevelContact) //flat floor vectors
+		if(FloorStatus == EShooterFloorStatus::BaseFloorContact || FloorStatus == EShooterFloorStatus::SphereLevelContact || FloorStatus == EShooterFloorStatus::SphereFloorContact) //flat floor vectors
 		{
 			if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
 			{
@@ -230,44 +230,44 @@ void ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, FTransform A
 				AddMovementInput(ForwardVector * ActionValue.X * (GroundBackwardSpeed/2.f) * DeltaTime);
 			}
 		}
-		if(FloorStatus == EShooterFloorStatus::SphereFloorContact) //walking on a sphere vectors
-		{
-			if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
-			{
-				//if just going forward, go GroundForwardSpeed
-				FVector AdjustedInputVector;
-				AdjustForSphereFloor(ActionValue.X, GroundForwardSpeed, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
-				AddMovementInput(AdjustedInputVector);
-			}
-			if(ActionValue.X > 0.f && ActionValue.Y != 0.f)
-			{
-				//if going forward and any lateral input, go a constant ForwardLateralSpeed
-				FVector AdjustedInputVector;
-				AdjustForSphereFloor(ActionValue.X, GroundForwardLateralSpeed/2.f, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
-				AddMovementInput(AdjustedInputVector);
-				
-				AdjustForSphereFloor(ActionValue.Y, GroundForwardLateralSpeed/2.f, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
-				AddMovementInput(AdjustedInputVector);
-				
-			}
-			if(ActionValue.X == 0.f && ActionValue.Y != 0.f)
-			{
-				//if not going forward and any lateral input, go a constant GroundLateralSpeed
-				FVector AdjustedInputVector;
-				AdjustForSphereFloor(ActionValue.Y, GroundLateralSpeed, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
-				AddMovementInput(AdjustedInputVector);
-			}
-			if(ActionValue.X < 0.f)
-			{
-				//if going backwards at all, go the GroundBackwardSpeed
-				FVector AdjustedInputVector;
-				AdjustForSphereFloor(ActionValue.X, GroundBackwardSpeed/2.f, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
-				AddMovementInput(AdjustedInputVector);
-				
-				AdjustForSphereFloor(ActionValue.Y, GroundBackwardSpeed/2.f, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
-				AddMovementInput(AdjustedInputVector);
-			}
-		}
+		// if(FloorStatus == EShooterFloorStatus::SphereFloorContact) //walking on a sphere vectors
+		// {
+		// 	if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
+		// 	{
+		// 		//if just going forward, go GroundForwardSpeed
+		// 		FVector AdjustedInputVector;
+		// 		AdjustForSphereFloor(ActionValue.X, GroundForwardSpeed, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
+		// 		AddMovementInput(AdjustedInputVector);
+		// 	}
+		// 	if(ActionValue.X > 0.f && ActionValue.Y != 0.f)
+		// 	{
+		// 		//if going forward and any lateral input, go a constant ForwardLateralSpeed
+		// 		FVector AdjustedInputVector;
+		// 		AdjustForSphereFloor(ActionValue.X, GroundForwardLateralSpeed/2.f, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
+		// 		AddMovementInput(AdjustedInputVector);
+		// 		
+		// 		AdjustForSphereFloor(ActionValue.Y, GroundForwardLateralSpeed/2.f, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
+		// 		AddMovementInput(AdjustedInputVector);
+		// 		
+		// 	}
+		// 	if(ActionValue.X == 0.f && ActionValue.Y != 0.f)
+		// 	{
+		// 		//if not going forward and any lateral input, go a constant GroundLateralSpeed
+		// 		FVector AdjustedInputVector;
+		// 		AdjustForSphereFloor(ActionValue.Y, GroundLateralSpeed, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
+		// 		AddMovementInput(AdjustedInputVector);
+		// 	}
+		// 	if(ActionValue.X < 0.f)
+		// 	{
+		// 		//if going backwards at all, go the GroundBackwardSpeed
+		// 		FVector AdjustedInputVector;
+		// 		AdjustForSphereFloor(ActionValue.X, GroundBackwardSpeed/2.f, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
+		// 		AddMovementInput(AdjustedInputVector);
+		// 		
+		// 		AdjustForSphereFloor(ActionValue.Y, GroundBackwardSpeed/2.f, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
+		// 		AddMovementInput(AdjustedInputVector);
+		// 	}
+		// }
 		// if(FloorStatus == EShooterFloorStatus::SphereLevelContact) //walking in a sphere vectors
 		// {
 		// 	if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
@@ -347,13 +347,13 @@ FVector ABasePawnPlayer::CalculateMovementVelocity(FTransform ActorTransform, fl
 	{
 		if(ControlInputVector.Size() == 0.f)
 		{
-			const FRotationMatrix VelocityRotation = UKismetMathLibrary::MakeRotFromXZ(LastVelocity.GetSafeNormal(), ActorTransform.GetUnitAxis(EAxis::Z));
-			const float RadiansToRotate =  LastVelocity.Size()/SphereRadius;
-			const FVector RotatedVector = LastVelocity.RotateAngleAxisRad(RadiansToRotate, VelocityRotation.GetUnitAxis(EAxis::Y));
-			DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + LastVelocity, FColor::Blue, true);
-			return LastVelocity = FMath::VInterpTo(RotatedVector, FVector::ZeroVector, DeltaTime, StoppingSpeed);
+			return FVector::ZeroVector;
+			return LastVelocity = FMath::VInterpTo(LastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
 		}
-		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + LastVelocity, FColor::Blue, true);
+		FVector SphereToActor = ActorTransform.GetLocation() - SphereLocation;
+		FMatrix InputRotation = FRotationMatrix::MakeFromXZ(ControlInputVector, ActorTransform.GetUnitAxis(EAxis::Z));
+		FVector NewPosition = SphereToActor.RotateAngleAxis(ControlInputVector.Size(), InputRotation.GetUnitAxis(EAxis::Y));
+		return LastVelocity = NewPosition - SphereToActor;
 		return LastVelocity = FMath::VInterpTo(LastVelocity, ControlInputVector, DeltaTime, AccelerationSpeed);
 	}
 	// if(FloorStatus == EShooterFloorStatus::SphereLevelContact && bIsMagnetized) //if walking in a sphere and magnetized
