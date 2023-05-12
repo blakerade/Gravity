@@ -30,6 +30,8 @@ struct FShooterMove
 	GENERATED_BODY()
 
 	UPROPERTY()
+	FTransform MoveTransform = FTransform::Identity;
+	UPROPERTY()
 	FVector MovementVector = FVector::ZeroVector;
 	UPROPERTY()
 	float PitchRotation = 0.f;
@@ -231,9 +233,12 @@ private:
 	void MovePressed(const FInputActionValue& ActionValue);
 	void BuildMovement(FShooterMove& OutMove);
 	FVector MoveVector;
-	FVector Movement_Internal(const FVector ActionValue, float DeltaTime);
-	void TotalMovementInput(const FVector ActionValue, float DeltaTime);
-	FVector CalculateMovementVelocity(float DeltaTime);
+	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
+	void TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
+	void AdjustForSphereFloor(const float ActionValue, FTransform ActorTransform, float DeltaTime,
+								const FVector InputDirectionVector, const FVector RotationVector,
+								FVector& AdjustedInputVector);
+	FVector CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime);
 	FVector LastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundForwardSpeed = 1000.f;
@@ -286,12 +291,15 @@ private:
 
 	//everything involved with gravity
 	FTransform PerformGravity(FTransform InActorTransform, float DeltaTime);
+	FVector SphereLocation = FVector::ZeroVector;
+	float SphereRadius = 0.f;
 	float ClosestDistanceToFloor = FLT_MAX;
 	UPROPERTY()
-	AActor* ClosestFloor;
+	AActor* ClosestFloor = nullptr;
 	FHitResult FloorHitResult;
 	FVector CurrentGravity = FVector::ZeroVector;
-	void FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection);
+	
+	AActor* FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection);
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float SphereTraceRadius = 750.f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
@@ -300,9 +308,11 @@ private:
 	float GravityForceCurve = 3.f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float ImpactEdgeAdjustment = 5.f;
+	
 	FRotator OrientToGravity(FRotator InActorRotator, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float SlerpSpeed = 1.f;
+	
 	FVector GravityForce(FVector InActorLocation, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float GravityStrength = 5.f;

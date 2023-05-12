@@ -17,6 +17,7 @@
 #include "Gravity/Flooring/SphereFloorBase.h"
 #include "Gravity/Weapons/WeaponBase.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 
 ABasePawnPlayer::ABasePawnPlayer()
@@ -150,16 +151,17 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 		Boost(MoveToSend);
 		
 
-		AddActorWorldOffset(Movement_Internal(MoveToSend.MovementVector, DeltaTime));
+		AddActorWorldOffset(Movement_Internal(MoveToSend.MovementVector, GetActorTransform(), DeltaTime));
 		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
 		Jump_Internal(MoveToSend.bJumped);
 		Magnetize_Internal(MoveToSend.bMagnetized);
 		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost);
-		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
 		SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
-		
+
+		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
+		MoveToSend.MoveTransform = GetActorTransform();
 		
 		if(!HasAuthority())
 		{
@@ -187,56 +189,126 @@ void ABasePawnPlayer::BuildMovement(FShooterMove& OutMove)
 	MoveVector = FVector::ZeroVector;
 }
 
-FVector ABasePawnPlayer::Movement_Internal(const FVector ActionValue, float DeltaTime)
+FVector ABasePawnPlayer::Movement_Internal(const FVector ActionValue,FTransform ActorTransform, float DeltaTime)
 {
-	TotalMovementInput(ActionValue, DeltaTime);
-	const FVector MovementVelocity = CalculateMovementVelocity(DeltaTime);
+	TotalMovementInput(ActionValue, ActorTransform, DeltaTime);
+	const FVector MovementVelocity = CalculateMovementVelocity(ActorTransform, DeltaTime);
 	ConsumeMovementInputVector();
 	return MovementVelocity;
 }
 
-void ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, float DeltaTime)
+void ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime)
 {
+	const FVector ForwardVector = ActorTransform.GetUnitAxis(EAxis::X);
+	const FVector RightVector = ActorTransform.GetUnitAxis(EAxis::Y);
+	const FVector UpVector = ActorTransform.GetUnitAxis(EAxis::Z);
+
 	if(FloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
 	{
-		if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
+		if(FloorStatus == EShooterFloorStatus::BaseFloorContact) //flat floor vectors
 		{
-			//if just going forward, go GroundForwardSpeed
-			AddMovementInput(GetActorForwardVector() * ActionValue.X * GroundForwardSpeed * DeltaTime);
+			if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
+			{
+				//if just going forward, go GroundForwardSpeed
+				AddMovementInput(ForwardVector * ActionValue.X * GroundForwardSpeed * DeltaTime);
+			}
+			if(ActionValue.X > 0.f && ActionValue.Y != 0.f)
+			{
+				//if going forward and any lateral input, go a constant ForwardLateralSpeed
+				AddMovementInput(RightVector * ActionValue.Y * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+				AddMovementInput(ForwardVector * ActionValue.X * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+			}
+			if(ActionValue.X == 0.f && ActionValue.Y != 0.f)
+			{
+				//if not going forward and any lateral input, go a constant GroundLateralSpeed
+				AddMovementInput(RightVector * ActionValue.Y * GroundLateralSpeed * DeltaTime);
+			}
+			if(ActionValue.X < 0.f)
+			{
+				//if going backwards at all, go the GroundBackwardSpeed
+				AddMovementInput(RightVector * ActionValue.Y * (GroundBackwardSpeed/2.f) * DeltaTime);
+				AddMovementInput(ForwardVector * ActionValue.X * (GroundBackwardSpeed/2.f) * DeltaTime);
+			}
 		}
-		if(ActionValue.X > 0.f && ActionValue.Y != 0.f)
+		if(FloorStatus == EShooterFloorStatus::SphereFloorContact) //walking on a sphere vectors
 		{
-			//if going forward and any lateral input, go a constant ForwardLateralSpeed
-			AddMovementInput(GetActorRightVector() * ActionValue.Y * (GroundForwardLateralSpeed/2.f) * DeltaTime);
-			AddMovementInput(GetActorForwardVector() * ActionValue.X * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+			if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
+			{
+				FVector AdjustedInputVector;
+				AdjustForSphereFloor(ActionValue.X, ActorTransform, DeltaTime, ForwardVector, RightVector, AdjustedInputVector);
+				//if just going forward, go GroundForwardSpeed
+				AddMovementInput(AdjustedInputVector);
+			}
+			if(ActionValue.X > 0.f && ActionValue.Y != 0.f)
+			{
+				//if going forward and any lateral input, go a constant ForwardLateralSpeed
+				AddMovementInput(RightVector * ActionValue.Y * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+				AddMovementInput(ForwardVector * ActionValue.X * (GroundForwardLateralSpeed/2.f) * DeltaTime);
+			}
+			if(ActionValue.X == 0.f && ActionValue.Y != 0.f)
+			{
+				FVector AdjustedInputVector;
+				AdjustForSphereFloor(ActionValue.Y, ActorTransform, DeltaTime, RightVector, -ForwardVector, AdjustedInputVector);
+				//if not going forward and any lateral input, go a constant GroundLateralSpeed
+				AddMovementInput(AdjustedInputVector);
+			}
+			if(ActionValue.X < 0.f)
+			{
+				//if going backwards at all, go the GroundBackwardSpeed
+				AddMovementInput(RightVector * ActionValue.Y * (GroundBackwardSpeed/2.f) * DeltaTime);
+				AddMovementInput(ForwardVector * ActionValue.X * (GroundBackwardSpeed/2.f) * DeltaTime);
+			}
 		}
-		if(ActionValue.X == 0.f && ActionValue.Y != 0.f)
+		if(FloorStatus == EShooterFloorStatus::SphereLevelContact) //walking in a sphere vectors
 		{
-			//if not going forward and any lateral input, go a constant GroundLateralSpeed
-			AddMovementInput(GetActorRightVector() * ActionValue.Y * GroundLateralSpeed * DeltaTime);
-		}
-		if(ActionValue.X < 0.f)
-		{
-			//if going backwards at all, go the GroundBackwardSpeed
-			AddMovementInput(GetActorRightVector() * ActionValue.Y * (GroundBackwardSpeed/2.f) * DeltaTime);
-			AddMovementInput(GetActorForwardVector() * ActionValue.X * (GroundBackwardSpeed/2.f) * DeltaTime);
+			
 		}
 	}
 	else //if not contacted with a floor
 	{
-		AddMovementInput(GetActorForwardVector() * ActionValue.X * DeltaTime);
-		AddMovementInput(GetActorRightVector() * ActionValue.Y * DeltaTime);
-		AddMovementInput(GetActorUpVector() * ActionValue.Z * DeltaTime);
+		AddMovementInput(ForwardVector * ActionValue.X * DeltaTime);
+		AddMovementInput(RightVector * ActionValue.Y * DeltaTime);
+		AddMovementInput(UpVector * ActionValue.Z * DeltaTime);
 	}
 }
 
-FVector ABasePawnPlayer::CalculateMovementVelocity(float DeltaTime)
+void ABasePawnPlayer::AdjustForSphereFloor(const float ActionValue, FTransform ActorTransform, float DeltaTime, const FVector InputDirectionVector, const FVector RotationVector, FVector& AdjustedInputVector)
 {
-	if(FloorStatus != EShooterFloorStatus::NoFloorContact && bIsMagnetized) //if contacted with floor and magnetized
+	const FVector InputVector = InputDirectionVector * ActionValue * GroundForwardSpeed * DeltaTime;
+	UE_LOG(LogTemp, Warning, TEXT("%f"), ActionValue);
+	const float ArcTan = UKismetMathLibrary::Atan(InputVector.Size()/SphereRadius);
+	const FVector RotateVector = (ActorTransform.GetLocation() - SphereLocation).GetSafeNormal() * SphereRadius;
+	FVector RotatedVector;
+	if(ActionValue > 0.f)
+	{
+		RotatedVector = (RotateVector).RotateAngleAxisRad(ArcTan, RotationVector);
+	}
+	if(ActionValue < 0.f)
+	{
+		// switch the rotation axis if we need to rotate the angle the other way
+		RotatedVector = (RotateVector).RotateAngleAxisRad(ArcTan, -RotationVector);
+	}
+	AdjustedInputVector = (RotatedVector + SphereLocation) - ActorTransform.GetLocation();
+}
+
+FVector ABasePawnPlayer::CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime)
+{
+	if(FloorStatus == EShooterFloorStatus::BaseFloorContact && bIsMagnetized) //if walking on a flat floor and magnetized
 	{
 		if(ControlInputVector.Size() == 0.f)
 		{
 			return LastVelocity = FMath::VInterpTo(LastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
+		}
+		return LastVelocity = FMath::VInterpTo(LastVelocity, ControlInputVector, DeltaTime, AccelerationSpeed);
+	}
+	if(FloorStatus == EShooterFloorStatus::SphereFloorContact && bIsMagnetized) //if walking on a sphere and magnetized
+	{
+		if(ControlInputVector.Size() == 0.f)
+		{
+			const FRotationMatrix VelocityRotation = UKismetMathLibrary::MakeRotFromXZ(LastVelocity.GetSafeNormal(), ActorTransform.GetUnitAxis(EAxis::Z));
+			const float RadiansToRotate =  LastVelocity.Size()/SphereRadius;
+			const FVector RotatedVector = LastVelocity.RotateAngleAxisRad(RadiansToRotate, VelocityRotation.GetUnitAxis(EAxis::Y));
+			return LastVelocity = FMath::VInterpTo(RotatedVector, FVector::ZeroVector, DeltaTime, StoppingSpeed);
 		}
 		return LastVelocity = FMath::VInterpTo(LastVelocity, ControlInputVector, DeltaTime, AccelerationSpeed);
 	}
@@ -387,7 +459,6 @@ void ABasePawnPlayer::Magnetize_Internal(bool bMagnetizedWasPressed)
 	
 		if(!bIsMagnetized)
 		{
-			SetFloorStatus(EShooterFloorStatus::NoFloorContact);
 			ZeroOutGravity();
 		}
 	}
@@ -499,45 +570,40 @@ FTransform ABasePawnPlayer::PerformGravity(FTransform InActorTransform, float De
 {
 	if(bIsMagnetized && FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		FTransform ActorTransform = InActorTransform;
-		FindClosestFloor(ActorTransform, CurrentGravity);
-		if(CurrentGravity.Size() != 0.f)
+		FTransform NewActorTransform = InActorTransform;
+		ClosestFloor = FindClosestFloor(NewActorTransform, CurrentGravity);
+		if(ClosestFloor)
 		{
-			ActorTransform.SetRotation(OrientToGravity(ActorTransform.Rotator(), DeltaTime).Quaternion());
+			NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), DeltaTime).Quaternion());
 			LastPitchRotation = 0.f;
-			ActorTransform.SetLocation(GravityForce(ActorTransform.GetLocation(), DeltaTime));
+			NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), DeltaTime));
 		}
-		// else if(bHaveAGravity && bIsASphereFloor)
-		// {
-		// 	//Pull towards the center of sphere floor
-		// 	Capsule->AddForce(CurrentGravity * SphereFloorGravityStrength);
-		// 	OrientToGravity(CurrentGravity, DeltaTime, DistanceToGravity, bHaveAGravity);
-		// }
-		// else if(bIsInsideSphere)
-		// {
-		// 	//Push us away from the center of the sphere
-		// 	const FVector AwayFromCenter = GetActorLocation() -SphereCenter;
-		// 	Capsule->AddForce(AwayFromCenter.GetSafeNormal() * SphereGravityStrength);
-		// 	OrientToGravity(AwayFromCenter, DeltaTime, DistanceToGravity, bHaveAGravity);
-		// }
-		return ActorTransform;
+		return NewActorTransform;
+	}
+	if(bIsMagnetized && FloorStatus == EShooterFloorStatus::SphereFloorContact)
+	{
+		FTransform NewActorTransform = InActorTransform;
+		SphereLocation = ClosestFloor->GetActorLocation();
+		CurrentGravity = SphereLocation - NewActorTransform.GetLocation();
+		NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), DeltaTime).Quaternion());
+		LastPitchRotation = 0.f;
+		return NewActorTransform;
 	}
 	return InActorTransform;
 }
 
-void ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection)
+AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection)
 {
-	//The parameters needed for OverlapMultiByChannel //////////////////////////////////////////////////////
 	const FVector FeetPosition = ActorTransform.GetLocation() - (ActorTransform.GetUnitAxis(EAxis::Z) * Capsule->GetScaledCapsuleHalfHeight());
-	TArray<FOverlapResult> HitOverlaps;
-	FCollisionShape GravitySphere = FCollisionShape::MakeSphere(GravityDistanceRadius);
-	FCollisionShape TraceShape = FCollisionShape::MakeSphere(SphereTraceRadius);
-	FCollisionQueryParams QueryParams;
-	FCollisionResponseParams ResponseParams;
 	TArray<AActor*> OutActors;
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	if(UWorld* World = GetWorld())
 	{
+		TArray<FOverlapResult> HitOverlaps;
+		FCollisionQueryParams QueryParams;
+		FCollisionResponseParams ResponseParams;
+		FCollisionShape GravitySphere = FCollisionShape::MakeSphere(GravityDistanceRadius);
+		FCollisionShape TraceShape = FCollisionShape::MakeSphere(SphereTraceRadius);
+		
 		World->OverlapMultiByChannel(HitOverlaps, FeetPosition, FQuat::Identity, ECC_GameTraceChannel1, GravitySphere, QueryParams, ResponseParams);
 		//use a sphere trace to hit a part of the floor that is closer to the player than the center
 		for(FOverlapResult Floor : HitOverlaps)
@@ -554,6 +620,7 @@ void ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& OutGr
 			}
 		}
 	}
+	return ClosestFloor;
 }
 
 FRotator ABasePawnPlayer::OrientToGravity(FRotator InActorRotator, float DeltaTime)
@@ -593,6 +660,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 				LastYawRotation = 0.f;
 				LastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
+				SphereRadius = (GetActorLocation() - SphereFloor->GetActorLocation()).Size();
 			}
 			else if(const AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 			{
@@ -696,7 +764,7 @@ void ABasePawnPlayer::SetFloorStatus(EShooterFloorStatus InFloorStatus)
 
 void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 {
-	Movement_Internal(ClientMove.MovementVector, FixedTimeStep);
+	Movement_Internal(ClientMove.MovementVector, GetActorTransform(), FixedTimeStep);
 	// Look_Internal(ClientMove.PitchVector);
 	Jump_Internal(ClientMove.bJumped);
 	Magnetize_Internal(ClientMove.bMagnetized);
@@ -712,9 +780,11 @@ void ABasePawnPlayer::ZeroOutGravity()
 {
 	ClosestDistanceToFloor = FLT_MAX;
 	ClosestFloor = nullptr;
-	FHitResult NewHitResult;
+	SetFloorStatus(EShooterFloorStatus::NoFloorContact);
+	const FHitResult NewHitResult;
 	FloorHitResult = NewHitResult;
 	CurrentGravity = FVector::ZeroVector;
+	SphereRadius = 0.f;
 }
 
 void ABasePawnPlayer::OnRep_StatusOnServer()
@@ -744,7 +814,7 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 {
 	for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
 	{
-		Movement_Internal(MoveToPlay.MovementVector, FixedTimeStep);
+		Movement_Internal(MoveToPlay.MovementVector, FTransform::Identity, FixedTimeStep);
 		Jump_Internal(MoveToPlay.bJumped);
 		Magnetize_Internal(MoveToPlay.bMagnetized);
 		Boost_Internal(MoveToPlay.BoostDirection, MoveToPlay.bBoost);
