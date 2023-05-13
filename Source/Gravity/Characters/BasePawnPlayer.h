@@ -235,11 +235,14 @@ private:
 	FVector MoveVector;
 	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
 	void TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
-	void AdjustForSphereFloor(const float ActionValue, float MovementSpeed, FTransform ActorTransform, float DeltaTime,
-								const FVector InputDirectionVector, const FVector RotationVector,
-								FVector& AdjustedInputVector) const;
+
 	FVector CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime);
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float SphereFloorMovementPercent = 0.05f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float LevelSphereMovementPercent = 0.05f;
 	FVector LastVelocity = FVector::ZeroVector;
+	FVector SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundForwardSpeed = 1000.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
