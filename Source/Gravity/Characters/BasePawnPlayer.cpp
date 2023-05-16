@@ -146,7 +146,7 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 		FShooterMove MoveToSend;
 		BuildMovement(MoveToSend);
 		BuildLook(MoveToSend);
-		Jump(MoveToSend);
+		BuildJump(MoveToSend);
 		Magnetized(MoveToSend);
 		Boost(MoveToSend);
 		
@@ -155,7 +155,7 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
-		Jump_Internal(MoveToSend.bJumped);
+		AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, GetActorTransform(), DeltaTime));
 		Magnetize_Internal(MoveToSend.bMagnetized);
 		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost);
 		SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
@@ -373,7 +373,7 @@ void ABasePawnPlayer::JumpPressed(const FInputActionValue& ActionValue)
 	bJumpPressed = true;
 }
 
-void ABasePawnPlayer::Jump(FShooterMove& OutMove)
+void ABasePawnPlayer::BuildJump(FShooterMove& OutMove)
 {
 	if(bJumpPressed)
 	{
@@ -382,17 +382,28 @@ void ABasePawnPlayer::Jump(FShooterMove& OutMove)
 	}
 }
 
-void ABasePawnPlayer::Jump_Internal(bool bJumpWasPressed)
+FVector ABasePawnPlayer::Jump_Internal(bool bJumpWasPressed, FTransform ActorTransform, float DeltaTime)
 {
+	if(!FMath::IsNearlyZero(JumpForce.Size()) && bIsMagnetized)
+	{
+		JumpForce = FMath::VInterpTo(JumpForce, FVector::ZeroVector, DeltaTime, JumpDeceleration);
+		CurrentJumpVelocity = ActorTransform.GetLocation() - LastJumpPosition;
+		LastJumpPosition = ActorTransform.GetLocation();
+
+		return JumpForce += LastVelocity;
+	}
 	if(bJumpWasPressed)
 	{
 		if(FloorStatus != EShooterFloorStatus::NoFloorContact && bIsMagnetized) //if we are in contact with a floor
 		{
-			SetFloorStatus(EShooterFloorStatus::NoFloorContact);
-			Capsule->AddImpulse(GetActorUpVector() * JumpVelocity);
-			Capsule->SetLinearDamping(AirFriction);
+			ZeroOutGravity();
+			JumpForce = ActorTransform.GetUnitAxis(EAxis::Z) * JumpVelocity;
+			JumpForce += LastVelocity;
+			LastJumpPosition = ActorTransform.GetLocation();
+			return JumpForce;
 		}
 	}
+	return JumpForce = FVector::ZeroVector;
 }
 
 void ABasePawnPlayer::Crouch(const FInputActionValue& ActionValue)
@@ -426,10 +437,14 @@ void ABasePawnPlayer::Magnetize_Internal(bool bMagnetizedWasPressed)
 		// }
 	
 		bIsMagnetized = !bIsMagnetized;
-	
-		if(!bIsMagnetized)
+	}
+	if(!bIsMagnetized)
 		{
-			ZeroOutGravity();
+		ZeroOutGravity();
+		if(CurrentJumpVelocity.Size() > 0)
+		{
+			LastVelocity = CurrentJumpVelocity;
+			CurrentJumpVelocity = FVector::ZeroVector;
 		}
 	}
 }
@@ -573,7 +588,7 @@ FTransform ABasePawnPlayer::PerformGravity(FTransform InActorTransform, float De
 
 AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection)
 {
-	const FVector FeetPosition = ActorTransform.GetLocation() - (ActorTransform.GetUnitAxis(EAxis::Z) * Capsule->GetScaledCapsuleHalfHeight());
+	//although feet makes more sense for magnetized boots, head position plays more predictably
 	TArray<AActor*> OutActors;
 	if(UWorld* World = GetWorld())
 	{
@@ -583,15 +598,16 @@ AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& Ou
 		FCollisionShape GravitySphere = FCollisionShape::MakeSphere(GravityDistanceRadius);
 		FCollisionShape TraceShape = FCollisionShape::MakeSphere(SphereTraceRadius);
 		
-		World->OverlapMultiByChannel(HitOverlaps, FeetPosition, FQuat::Identity, ECC_GameTraceChannel1, GravitySphere, QueryParams, ResponseParams);
+		World->OverlapMultiByChannel(HitOverlaps, ActorTransform.GetLocation(), FQuat::Identity, ECC_GameTraceChannel1, GravitySphere, QueryParams, ResponseParams);
 		//use a sphere trace to hit a part of the floor that is closer to the player than the center
 		for(FOverlapResult Floor : HitOverlaps)
 		{
 			if(World && Floor.GetActor())
 			{
-				World->SweepSingleByChannel(FloorHitResult, FeetPosition, Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
+				World->SweepSingleByChannel(FloorHitResult, ActorTransform.GetLocation(), Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
 				if(FloorHitResult.bBlockingHit && (FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size() < ClosestDistanceToFloor)
 				{
+					OriginalActorLocation = ActorTransform.GetLocation();
 					ClosestDistanceToFloor = (FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size();
 					ClosestFloor = Floor.GetActor();
 					OutGravityDirection = FloorHitResult.ImpactPoint - ActorTransform.GetLocation();
@@ -611,22 +627,39 @@ FRotator ABasePawnPlayer::OrientToGravity(FRotator InActorRotator, float DeltaTi
 	// 	FeetToGravity = FRotationMatrix::MakeFromZY(-CurrentGravity, GetActorRightVector());
 	// 	const FQuat NewRotation = FQuat::Slerp(InActorRotator.Quaternion(),FeetToGravity.ToQuat(), DeltaTime * (SlerpSpeed/ClosestDistanceToFloor));
 	// 	DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (NewRotation.GetUpVector() * 100.f), FColor::Blue, true);
-	// 	UE_LOG(LogTemp, Warning, TEXT("1"));
 	//
 	// 	return NewRotation.Rotator();
 	// }
 	//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
 	FeetToGravity = FRotationMatrix::MakeFromZX(-CurrentGravity, GetActorForwardVector());
-	const FQuat NewRotation = FQuat::Slerp(InActorRotator.Quaternion(),FeetToGravity.ToQuat(), DeltaTime * (SlerpSpeed/ClosestDistanceToFloor));
+	FQuat NewRotation;
+	if(FloorStatus == EShooterFloorStatus::SphereFloorContact || FloorStatus == EShooterFloorStatus::SphereLevelContact)
+	{
+		NewRotation = FQuat::Slerp(InActorRotator.Quaternion(),FeetToGravity.ToQuat(), 1.f);
+	}
+	else
+	{
+		NewRotation = FQuat::Slerp(InActorRotator.Quaternion(),FeetToGravity.ToQuat(), DeltaTime * (SlerpSpeed/ClosestDistanceToFloor));
+	}
 	return NewRotation.Rotator();
 }
 
 FVector ABasePawnPlayer::GravityForce(FVector InActorLocation, float DeltaTime)
 {
-	const FVector NewVector = FMath::InterpEaseIn(InActorLocation, FVector(FloorHitResult.ImpactPoint), (GravityStrength/ClosestDistanceToFloor) * DeltaTime, GravityForceCurve);
-	// const FVector NewVector = FMath::Lerp(InActorLocation,  FloorHitResult.ImpactPoint, (GravityStrength/ClosestDistanceToFloor) * DeltaTime);
+	ClosestDistanceToFloor = FloorHitResult.Distance + SphereTraceRadius;
+	const float DistancePct = FMath::Abs(150 - 100 * (ClosestDistanceToFloor/GravityDistanceRadius));
+	FVector NewVector;
+	if(DistancePct == 100.f)
+	{
+		NewVector = FMath::VInterpConstantTo(InActorLocation, FVector(FloorHitResult.ImpactPoint), DeltaTime, InRangeGravityStrength);
+	}
+	else
+	{
+		NewVector = FMath::VInterpConstantTo(InActorLocation, FVector(FloorHitResult.ImpactPoint), DeltaTime, FMath::Pow(OutRangeGravityStrength * DistancePct, GravityForceCurve));
+	}
 	LastVelocity = FVector::ZeroVector;
 	SphereLastVelocity = FVector::ZeroVector;
+	
 	return NewVector;
 }
 void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -644,7 +677,6 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 				LastVelocity = FVector::ZeroVector;
 				SphereLastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
-				SphereRadius = (GetActorLocation() - SphereFloor->GetActorLocation()).Size();
 			}
 			else if(const AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
 			{
@@ -655,7 +687,6 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 				LastVelocity = FVector::ZeroVector;
 				SphereLastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
-				SphereRadius = (GetActorLocation() - LevelSphere->GetActorLocation()).Size();
 			}
 			else if(const AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 			{
@@ -685,6 +716,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			ZeroOutGravity();
 			LastVelocity += Hit.ImpactNormal * (LastVelocity.Size()/2.f);
 		}
+		JumpForce = FVector::ZeroVector;
 	}
 }
 
@@ -722,7 +754,7 @@ void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 {
 	Movement_Internal(ClientMove.MovementVector, GetActorTransform(), FixedTimeStep);
 	// Look_Internal(ClientMove.PitchVector);
-	Jump_Internal(ClientMove.bJumped);
+	// Jump_Internal(ClientMove.bJumped);
 	Magnetize_Internal(ClientMove.bMagnetized);
 	Boost_Internal(ClientMove.BoostDirection, ClientMove.bBoost);
 	StatusOnServer.ShooterTransform = GetActorTransform();
@@ -735,12 +767,13 @@ void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 void ABasePawnPlayer::ZeroOutGravity()
 {
 	ClosestDistanceToFloor = FLT_MAX;
+	OriginalActorLocation = FVector::ZeroVector;
 	ClosestFloor = nullptr;
 	SetFloorStatus(EShooterFloorStatus::NoFloorContact);
 	const FHitResult NewHitResult;
 	FloorHitResult = NewHitResult;
 	CurrentGravity = FVector::ZeroVector;
-	SphereRadius = 0.f;
+	
 }
 
 void ABasePawnPlayer::OnRep_StatusOnServer()
@@ -771,7 +804,7 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 	for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
 	{
 		Movement_Internal(MoveToPlay.MovementVector, FTransform::Identity, FixedTimeStep);
-		Jump_Internal(MoveToPlay.bJumped);
+		// Jump_Internal(MoveToPlay.bJumped);
 		Magnetize_Internal(MoveToPlay.bMagnetized);
 		Boost_Internal(MoveToPlay.BoostDirection, MoveToPlay.bBoost);
 	}

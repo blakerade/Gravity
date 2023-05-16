@@ -163,11 +163,6 @@ protected:
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* CharacterCombatMapping;
 	
-	void JumpPressed(const FInputActionValue& ActionValue);
-	bool bJumpPressed = false;
-	void Jump_Internal(bool bJumpWasPressed);
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float JumpVelocity = 40000.f;
 	
 	void Crouch(const FInputActionValue& ActionValue);
 	
@@ -223,19 +218,24 @@ private:
 	const float FixedTimeStep = 1.f/60.f;
 	float AccumulatedDeltaTime = 0.f;
 	void ShooterMovement(float DeltaTime);
-	void Jump(FShooterMove& OutMove);
 	void Magnetized(FShooterMove& OutMove);
 	void Boost(FShooterMove& OutMove);
 	FVector BoostDirection;
-	//
+	/**
+	 * @end 
+	 */
+
 
 	//everything involved with pressing forward, left, right, backward
 	void MovePressed(const FInputActionValue& ActionValue);
+	
 	void BuildMovement(FShooterMove& OutMove);
 	FVector MoveVector;
+	
 	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
+	
 	void TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
-
+	
 	FVector CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float SphereFloorMovementPercent = 0.05f;
@@ -257,15 +257,20 @@ private:
 	float AccelerationSpeed = 4.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirSpeed = 2.5f;
-	//
+	/**
+	 * @end 
+	 */
+
 
 	//everything involved with mouse look rotation
 	void LookActivated(const FInputActionValue& ActionValue);
+	
 	void BuildLook(FShooterMove& OutMove);
 	float PitchValue = 0.f;
 	float YawValue = 0.f;
 	UPROPERTY(Replicated)
 	float SpringArmClientPitch;
+	
 	FRotator PitchLook_Internal(float ActionValueY, float DeltaTime);
 	float SpringArmPitch;
 	float SpringArmYaw;
@@ -276,26 +281,29 @@ private:
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float SpringArmPitchMin = -75.f;
 	EShooterSpin ShooterSpin = EShooterSpin::NoFlip;
+	
 	FRotator AddShooterSpin_Internal(float ActionValueY, float DeltaTime);
 	float LastPitchRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirPitchSpeed = 2.f;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float MaxPitchSpeed = 5.f;
+	
 	FRotator YawLook_Internal(float ActionValueX, float DeltaTime);
 	float LastYawRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationSpeed = 0.25f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationMaxSpeed = 2.f;
-	//
+	/**
+	* @end 
+	*/
 
 
 
 	//everything involved with gravity
 	FTransform PerformGravity(FTransform InActorTransform, float DeltaTime);
 	FVector SphereLocation = FVector::ZeroVector;
-	float SphereRadius = 0.f;
 	float ClosestDistanceToFloor = FLT_MAX;
 	UPROPERTY()
 	AActor* ClosestFloor = nullptr;
@@ -308,19 +316,41 @@ private:
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float GravityDistanceRadius = 2500.f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
-	float GravityForceCurve = 3.f;
-	UPROPERTY(EditAnywhere, Category = Gravity)
 	float ImpactEdgeAdjustment = 5.f;
+	FVector OriginalActorLocation = FVector::ZeroVector;
 	
 	FRotator OrientToGravity(FRotator InActorRotator, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category = Gravity)
-	float SlerpSpeed = 1.f;
+	float SlerpSpeed = 1000.f;
 	
 	FVector GravityForce(FVector InActorLocation, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category = Gravity)
-	float GravityStrength = 5.f;
-	//
+	float OutRangeGravityStrength = 0.3f;
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float InRangeGravityStrength = 500.f;
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float GravityForceCurve = 2.f;
+	/**
+	 * @end 
+	 */
 
+	//everything to do with jumping
+	void JumpPressed(const FInputActionValue& ActionValue);
+	
+	void BuildJump(FShooterMove& OutMove);
+	bool bJumpPressed = false;
+	
+	FVector Jump_Internal(bool bJumpWasPressed, FTransform ActorTransform, float DeltaTime);
+	FVector CurrentJumpVelocity = FVector::ZeroVector;
+	FVector LastJumpPosition = FVector::ZeroVector;
+	FVector JumpForce = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float JumpVelocity = 10.f;
+	UPROPERTY(EditAnywhere, Category=Movement)
+	float JumpDeceleration = 10.f;
+	/**
+	 * @end
+	 */
 
 	
 	UPROPERTY(EditAnywhere, Category = Movement)
