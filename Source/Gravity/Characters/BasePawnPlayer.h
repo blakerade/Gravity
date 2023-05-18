@@ -62,11 +62,10 @@ struct FShooterStatus
 	UPROPERTY()
 	bool bMagnetized;
 	UPROPERTY()
-	FShooterMove LastMove;
+	int8 BoostCount;
+	FVector LastVelocity;
 	UPROPERTY()
-	FVector Velocity;
-	UPROPERTY()
-	FVector Torque;
+    FShooterMove LastMove;
 	
 };
 
@@ -165,38 +164,9 @@ protected:
 	
 	
 	void Crouch(const FInputActionValue& ActionValue);
-	
-	void MagnetizePressed(const FInputActionValue& ActionValue);
-	bool bMagnetizedPressed = false;
-	void Magnetize_Internal(bool bMagnetizedWasPressed);
-	UPROPERTY(Replicated)
-	bool bIsMagnetized = false;
-
-
-	void BoostPressed(const FInputActionValue& ActionValue);
-	bool bBoostPressed = false;
-	void Boost_Internal(FVector ActionValue, bool bBoostWasPressed);
-	void BoostForce(const FVector ActionValue);
-	void ContactedFloorMagnetizeDelay();
-	FTimerHandle MagnetizeDelayForBoost;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float MagnetizeDelay = 1.f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float BoostCurrentVelocityReduction = 2.5f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float BoostSpeed = 1000.f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float BoostRechargeRate = 5.f;
-	bool bCanBoost = true;
-	int8 BoostCount = 0;
-	UPROPERTY(EditAnywhere, Category = Movement)
-	int8 MaxBoosts = 2;
-	void BoostCountConsumer();
-	FTimerHandle BoostTimerHandle;
 
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float FloorFriction = 4.f;
-	
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float AirFriction = 0.01f;
 
@@ -218,9 +188,6 @@ private:
 	const float FixedTimeStep = 1.f/60.f;
 	float AccumulatedDeltaTime = 0.f;
 	void ShooterMovement(float DeltaTime);
-	void Magnetized(FShooterMove& OutMove);
-	void Boost(FShooterMove& OutMove);
-	FVector BoostDirection;
 	/**
 	 * @end 
 	 */
@@ -317,7 +284,6 @@ private:
 	float GravityDistanceRadius = 2500.f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float ImpactEdgeAdjustment = 5.f;
-	FVector OriginalActorLocation = FVector::ZeroVector;
 	
 	FRotator OrientToGravity(FRotator InActorRotator, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category = Gravity)
@@ -330,6 +296,8 @@ private:
 	float InRangeGravityStrength = 500.f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float GravityForceCurve = 2.f;
+	UPROPERTY(EditAnywhere, Category = Gravity)
+	float GravityVelocityReduction = 1.15f;
 	/**
 	 * @end 
 	 */
@@ -341,6 +309,8 @@ private:
 	bool bJumpPressed = false;
 	
 	FVector Jump_Internal(bool bJumpWasPressed, FTransform ActorTransform, float DeltaTime);
+	bool bIsJumpingOffSphereLevel = false;
+	
 	FVector CurrentJumpVelocity = FVector::ZeroVector;
 	FVector LastJumpPosition = FVector::ZeroVector;
 	FVector JumpForce = FVector::ZeroVector;
@@ -352,9 +322,51 @@ private:
 	 * @end
 	 */
 
+	//everything involved with magnetizing
+	void BuildMagnetized(FShooterMove& OutMove);
+	void MagnetizePressed(const FInputActionValue& ActionValue);
+	bool bMagnetizedPressed = false;
+	void Magnetize_Internal(bool bMagnetizedWasPressed);
+	UPROPERTY(Replicated)
+	bool bIsMagnetized = false;
+	/**
+	 * @end
+	 */
+
+	//everything involved with boosting
+	void BoostPressed(const FInputActionValue& ActionValue);
 	
-	UPROPERTY(EditAnywhere, Category = Movement)
-	float RotationSpeedDampener = 100.f;
+	void BuildBoost(FShooterMove& OutMove);
+	FVector BoostDirection;
+	
+	bool bBoostPressed = false;
+	FVector Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime);
+	FVector OriginalActorLocation = FVector::ZeroVector;
+	float BoostDistanceLeft = 0.f;
+	UPROPERTY(EditAnywhere, Category=Boost)
+	float BoostLastVelocityReduction = 1.15f;
+	
+	FVector ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime);
+	UPROPERTY(EditAnywhere, Category=Boost)
+	float NonContactedBoostSpeed = 25.f;
+	UPROPERTY(EditAnywhere, Category=Boost)
+	float ContactedBoostDistance = 100.f;
+	UPROPERTY(EditAnywhere, Category=Boost)
+	float ContactedBoostSpeed = 100.f;
+	UPROPERTY(EditAnywhere, Category=Boost)
+	float MagnetizeDelay = 1.f;
+	UPROPERTY(EditAnywhere, Category=Boost)
+	float BoostRechargeRate = 5.f;
+	UPROPERTY(EditAnywhere, Category = Boost)
+	int8 MaxBoosts = 2;
+	int8 BoostCount = MaxBoosts;
+	
+	void BoostRecharge();
+	FTimerHandle BoostRechargeTimerHandle;
+	/**
+	 * @end 
+	 */
+	
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 	
@@ -364,7 +376,7 @@ private:
 	TArray<FShooterMove> UnacknowledgedMoves;
 	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
 	FShooterStatus StatusOnServer;
-
+	FShooterStatus StatusOnClient;
 
 	void ZeroOutGravity();
 	UFUNCTION()

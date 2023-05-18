@@ -21,6 +21,8 @@ void ABulletBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	//this isn't setting it, putting it in tick does. might need to make a pollinit in the future if shooting yourself becomes a problem
+	BulletBox->MoveIgnoreActors.Add(GetOwner());
 	BulletBox->OnComponentHit.AddDynamic(this, &ABulletBase::OnBulletHit);
 }
 

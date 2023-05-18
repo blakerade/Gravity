@@ -80,7 +80,10 @@ void AWeaponBase::RequestFire(FVector HitTarget)
 	if(Shooter && BulletClass && Muzzle && World)
 	{
 		ABulletBase* Bullet = World->SpawnActor<ABulletBase>(BulletClass, Muzzle->GetSocketLocation(WeaponBodyMesh), (HitTarget - Muzzle->GetSocketLocation(WeaponBodyMesh)).Rotation());
-		Bullet->SetOwner(Shooter);
+		if(Bullet)
+		{
+			Bullet->SetOwner(Shooter);
+		}
 	}
 }
 
