@@ -159,7 +159,7 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
 		AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, GetActorTransform(), DeltaTime));
 		Magnetize_Internal(MoveToSend.bMagnetized);
-		AddActorWorldOffset(Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, BoostCount,GetActorTransform(), DeltaTime));
+		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, BoostCount, GetActorTransform(), DeltaTime);
 		SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
 
 		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
@@ -466,13 +466,12 @@ void ABasePawnPlayer::BuildBoost(FShooterMove& OutMove)
 	{
 		OutMove.BoostDirection = BoostDirection;
 		OutMove.bBoost = true;
-		OriginalActorLocation = GetActorLocation();
 		bBoostPressed = false;
 		BoostDirection = FVector::ZeroVector;
 	}
 }
 
-FVector ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime)
+void ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime)
 {
 	if(bBoostWasPressed)
 	{
@@ -484,35 +483,36 @@ FVector ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPress
 				const FVector WorldBoostVector = InActorTransform.TransformVectorNoScale(BoostVector);
 				LastVelocity = WorldBoostVector * NonContactedBoostSpeed + LastVelocity /= BoostLastVelocityReduction;
 				GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRecharge, BoostRechargeRate);
-				return FVector::ZeroVector;
 			}
-			BoostDistanceLeft += ContactedBoostDistance;
-			GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRecharge, BoostRechargeRate);
-			return FVector::ZeroVector;
+			else
+			{
+				ContactedBoostForce(BoostVector, InActorTransform, DeltaTime);
+				GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRecharge, BoostRechargeRate);
+			}
 		}
 	}
-	if(BoostDistanceLeft != 0.f)
-	{
-		return ContactedBoostForce(BoostVector, InActorTransform, DeltaTime);
-	}
-	return FVector::ZeroVector;
 }
 
-FVector ABasePawnPlayer::ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime)
+void ABasePawnPlayer::ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime)
 {
-	const FVector WorldBoostVector = ContactedBoostSpeed * InActorTransform.TransformVectorNoScale(BoostVector) + OriginalActorLocation ;
+	const FVector WorldBoostVector = ContactedBoostSpeed * InActorTransform.TransformVectorNoScale(BoostVector);
 	if(FloorStatus == EShooterFloorStatus::BaseFloorContact)
 	{
-		BoostDistanceLeft = (WorldBoostVector - InActorTransform.GetLocation()).Size();
-		DrawDebugPoint(GetWorld(), WorldBoostVector, 50.f, FColor::Blue, true);
-		// return LastVelocity = FMath::VInterpTo(InActorTransform.GetLocation(), WorldBoostVector, DeltaTime, ContactedBoostSpeed);
-		return FVector::ZeroVector;
+		if(bIsInDebugMode)
+		{
+			DrawDebugPoint(GetWorld(), WorldBoostVector, 50.f, FColor::Blue, true);
+			DrawDebugLine(GetWorld(), InActorTransform.GetLocation(), InActorTransform.GetLocation() + WorldBoostVector, FColor::Blue, true);
+		}
+		LastVelocity = WorldBoostVector;
 	}
-	if(FloorStatus == EShooterFloorStatus::SphereFloorContact || FloorStatus == EShooterFloorStatus::SphereLevelContact)
+	if(FloorStatus == EShooterFloorStatus::SphereFloorContact)
 	{
-		SphereLastVelocity = FMath::VInterpTo(InActorTransform.GetLocation(), WorldBoostVector, DeltaTime, ContactedBoostSpeed);
+		SphereLastVelocity = WorldBoostVector * SphereFloorMovementPercent;
 	}
-	return FVector::ZeroVector;
+	if(FloorStatus == EShooterFloorStatus::SphereLevelContact)
+	{
+		SphereLastVelocity = -WorldBoostVector * LevelSphereMovementPercent;
+	}
 }
 
 void ABasePawnPlayer::BoostRecharge()
@@ -524,19 +524,6 @@ void ABasePawnPlayer::BoostRecharge()
 	}
 }
 
-void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
-{
-	
-}
-
-void ABasePawnPlayer::FirePressed(const FInputActionValue& ActionValue)
-{
-	if(Combat && Combat->EquippedWeapon)
-	{
-		Combat->EquippedWeapon->RequestFire(GetHitTarget());
-	}
-}
-
 FTransform ABasePawnPlayer::PerformGravity(FTransform InActorTransform, float DeltaTime)
 {
 	FTransform NewActorTransform = InActorTransform;
@@ -544,11 +531,8 @@ FTransform ABasePawnPlayer::PerformGravity(FTransform InActorTransform, float De
 	{
 		if(bIsJumpingOffSphereLevel)
 		{
-			if(ClosestFloor == nullptr)
-			{
-				ClosestFloor = FindClosestFloor(NewActorTransform, CurrentGravity);
-			}
-			else
+			ClosestFloor = FindClosestFloor(NewActorTransform, CurrentGravity);
+			if(ClosestFloor != nullptr)
 			{
 				SphereLocation = ClosestFloor->GetActorLocation();
 				CurrentGravity = NewActorTransform.GetLocation() - SphereLocation;
@@ -611,7 +595,10 @@ AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& Ou
 		FCollisionShape TraceShape = FCollisionShape::MakeSphere(SphereTraceRadius);
 		
 		World->OverlapMultiByChannel(HitOverlaps, ActorTransform.GetLocation(), FQuat::Identity, ECC_GameTraceChannel1, GravitySphere, QueryParams, ResponseParams);
-		DrawDebugSphere(World, ActorTransform.GetLocation(), GravityDistanceRadius, 32.f, FColor::Green);
+		if(bIsInDebugMode)
+		{
+			DrawDebugSphere(World, ActorTransform.GetLocation(), GravityDistanceRadius, 32.f, FColor::Green);
+		}
 		//use a sphere trace to hit a part of the floor that is closer to the player than the center
 		for(FOverlapResult Floor : HitOverlaps)
 		{
@@ -620,7 +607,10 @@ AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& Ou
 				World->SweepSingleByChannel(FloorHitResult, ActorTransform.GetLocation(), Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
 				if(FloorHitResult.bBlockingHit && (FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size() < ClosestDistanceToFloor)
 				{
-					// DrawDebugPoint(World, FloorHitResult.ImpactPoint, 50.f, FColor::Red, true);
+					if(bIsInDebugMode)
+					{
+						DrawDebugPoint(World, FloorHitResult.ImpactPoint, 50.f, FColor::Red);
+					}
 					ClosestDistanceToFloor = (FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size();
 					ClosestFloor = Floor.GetActor();
 					OutGravityDirection = FloorHitResult.ImpactPoint - ActorTransform.GetLocation();
@@ -731,6 +721,20 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 		}
 		bIsJumpingOffSphereLevel = false;
 		JumpForce = FVector::ZeroVector;
+		CurrentJumpVelocity = FVector::ZeroVector;
+	}
+}
+
+void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
+{
+	
+}
+
+void ABasePawnPlayer::FirePressed(const FInputActionValue& ActionValue)
+{
+	if(Combat && Combat->EquippedWeapon)
+	{
+		Combat->EquippedWeapon->RequestFire(GetHitTarget());
 	}
 }
 
@@ -780,7 +784,6 @@ void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
 void ABasePawnPlayer::ZeroOutGravity()
 {
 	ClosestDistanceToFloor = FLT_MAX;
-	OriginalActorLocation = FVector::ZeroVector;
 	ClosestFloor = nullptr;
 	const FHitResult NewHitResult;
 	FloorHitResult = NewHitResult;
@@ -823,8 +826,14 @@ void ABasePawnPlayer::DebugMode() const
 {
 	if(bIsInDebugMode)
 	{
+		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (LastVelocity * 10.f), FColor::Green);
 		if(GEngine)
 		{
+			const FColor BoostCountColor = BoostCount == 0 ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, BoostCountColor, FString::Printf(TEXT("BoostCount: %i"), BoostCount));
+			const FColor MagnetizeColor = bIsMagnetized ? FColor::Green : FColor::Red;
+			const FString MagnetizeString = bIsMagnetized ? FString(TEXT("bIsMagnetized: True")) : FString(TEXT("bIsMagnetized: False"));
+			GEngine->AddOnScreenDebugMessage(-1,0.f, MagnetizeColor, MagnetizeString);
 			const FColor JumpBoolColor = bIsJumpingOffSphereLevel ? FColor::Green : FColor::Red;
 			const FString JumpBoolString = bIsJumpingOffSphereLevel ? FString(TEXT("JumpingOffLevelSphere: True")) : FString(TEXT("JumpingOffLevelSphere: False"));
 			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpBoolColor, JumpBoolString);

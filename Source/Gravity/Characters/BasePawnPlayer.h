@@ -92,7 +92,7 @@ public:
 	void DebugMode() const;
 	UFUNCTION(Exec)
 	void SwitchDebugMode();
-	bool bIsInDebugMode = false;
+	bool bIsInDebugMode = true;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -210,9 +210,9 @@ private:
 	
 	FVector CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float SphereFloorMovementPercent = 0.05f;
+	float SphereFloorMovementPercent = 0.025f;
 	UPROPERTY(EditAnywhere, Category=Movement)
-	float LevelSphereMovementPercent = 0.05f;
+	float LevelSphereMovementPercent = 0.0075f;
 	FVector LastVelocity = FVector::ZeroVector;
 	FVector SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -343,21 +343,17 @@ private:
 	
 	void BuildBoost(FShooterMove& OutMove);
 	FVector BoostDirection;
-	
 	bool bBoostPressed = false;
-	FVector Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime);
-	FVector OriginalActorLocation = FVector::ZeroVector;
-	float BoostDistanceLeft = 0.f;
+	
+	void Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Boost)
 	float BoostLastVelocityReduction = 1.15f;
 	
-	FVector ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime);
+	void ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Boost)
 	float NonContactedBoostSpeed = 25.f;
 	UPROPERTY(EditAnywhere, Category=Boost)
-	float ContactedBoostDistance = 100.f;
-	UPROPERTY(EditAnywhere, Category=Boost)
-	float ContactedBoostSpeed = 100.f;
+	float ContactedBoostSpeed = 30.f;
 	UPROPERTY(EditAnywhere, Category=Boost)
 	float MagnetizeDelay = 1.f;
 	UPROPERTY(EditAnywhere, Category=Boost)
