@@ -88,6 +88,11 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const override;
 	EShooterFloorStatus FloorStatus = EShooterFloorStatus::NoFloorContact;
+
+	void DebugMode() const;
+	UFUNCTION(Exec)
+	void SwitchDebugMode();
+	bool bIsInDebugMode = false;
 	
 protected:
 	virtual void BeginPlay() override;

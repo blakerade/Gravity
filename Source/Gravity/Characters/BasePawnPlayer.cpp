@@ -111,20 +111,8 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
-	UE_LOG(LogTemp, Warning, TEXT("DistanceToFloor: %f"), ClosestDistanceToFloor);
-	UE_LOG(LogTemp, Warning, TEXT("OriginalActorLocation: %s"), *OriginalActorLocation.ToString());
-	if(ClosestFloor)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("ClosestFloor: %s"), *ClosestFloor->GetName());
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("ClosestFloor: NOFLOOR"));
-	}
-	UE_LOG(LogTemp, Warning, TEXT("OriginalActorLocation: %s"), *OriginalActorLocation.ToString());
-	UE_LOG(LogTemp, Warning, TEXT("CurrentGravity: %s"), *CurrentGravity.ToString());
-
-
+	
+	DebugMode();
 	//current fixed time step of 60 per second
 	AccumulatedDeltaTime += DeltaTime;
 	if(AccumulatedDeltaTime >= FixedTimeStep)
@@ -829,4 +817,51 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 		Magnetize_Internal(MoveToPlay.bMagnetized);
 		// Boost_Internal(MoveToPlay.BoostDirection, MoveToPlay.bBoost);
 	}
+}
+
+void ABasePawnPlayer::DebugMode() const
+{
+	if(bIsInDebugMode)
+	{
+		if(GEngine)
+		{
+			const FColor JumpBoolColor = bIsJumpingOffSphereLevel ? FColor::Green : FColor::Red;
+			const FString JumpBoolString = bIsJumpingOffSphereLevel ? FString(TEXT("JumpingOffLevelSphere: True")) : FString(TEXT("JumpingOffLevelSphere: False"));
+			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpBoolColor, JumpBoolString);
+			const FColor JumpVelocityColor = CurrentJumpVelocity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpVelocityColor, FString::Printf(TEXT("CurrentJumpVelocity: %s"), *CurrentJumpVelocity.ToString()));
+			const FColor VelocityColor = LastVelocity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, VelocityColor, FString::Printf(TEXT("LastVelocity: %s"), *LastVelocity.ToString()));
+			const FColor SphereVelocity = SphereLastVelocity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, SphereVelocity, FString::Printf(TEXT("SphereLastVelocity: %s"), *SphereLastVelocity.ToString()));
+			const FColor JumpColor = JumpForce.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpColor, FString::Printf(TEXT("JumpForce: %s"), *JumpForce.ToString()));
+			const FColor GravityColor = CurrentGravity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, GravityColor, FString::Printf(TEXT("CurrentGravity: %s"), *CurrentGravity.ToString()));
+			const FColor FloorColor = ClosestFloor == nullptr ? FColor::Red : FColor::Green;
+			if(ClosestFloor)
+			{
+				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorColor, FString::Printf(TEXT("ClosestFloor: %s"), *ClosestFloor->GetName()));
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorColor, FString::Printf(TEXT("ClosestFloor: NoFloor")));
+			}
+			const FColor FloorHitResultColor = FloorHitResult.bBlockingHit == false ? FColor::Red : FColor::Green;
+			if(ClosestFloor)
+			{
+				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorHitResultColor, FString::Printf(TEXT("FloorHitResultImpact: %s"), *FloorHitResult.ImpactPoint.ToString()));
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorHitResultColor, FString::Printf(TEXT("FloorHitResultImpact: NoImpact")));
+			}
+		}
+		
+	}
+}
+
+void ABasePawnPlayer::SwitchDebugMode()
+{
+	bIsInDebugMode = !bIsInDebugMode;
 }
