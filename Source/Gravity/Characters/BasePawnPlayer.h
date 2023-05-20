@@ -36,8 +36,6 @@ struct FShooterMove
 	UPROPERTY()
 	float PitchRotation = 0.f;
 	UPROPERTY()
-	float AirSpin =  0.f;
-	UPROPERTY()
 	float YawRotation =  0.f;
 	UPROPERTY()
 	bool bJumped = false;
@@ -49,7 +47,6 @@ struct FShooterMove
 	FVector BoostDirection = FVector::ZeroVector;
 	UPROPERTY()
 	float GameTime;
-	
 };
 
 USTRUCT()
@@ -63,7 +60,8 @@ struct FShooterStatus
 	bool bMagnetized;
 	UPROPERTY()
 	int8 BoostCount;
-	FVector LastVelocity;
+	UPROPERTY()
+	FVector LastVelocity = FVector::ZeroVector;
 	UPROPERTY()
     FShooterMove LastMove;
 	
@@ -92,7 +90,8 @@ public:
 	void DebugMode() const;
 	UFUNCTION(Exec)
 	void SwitchDebugMode();
-	bool bIsInDebugMode = true;
+	bool bIsInDebugMode = false
+	;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -189,6 +188,40 @@ protected:
 	float KnockBackImpulse = 1.75f;
 
 private:
+	//everything involved with network smoothing
+	void PlayClientMoves(float DeltaTime);
+	
+	void InterpAutonomousCSPTransform(float DeltaTime);
+	float CurrentCSPDelta = 0.f;
+	UPROPERTY(EditAnywhere, Category=Network)
+	float ServerClintDeltaTolerance = 100.f;
+	UPROPERTY(EditAnywhere, Category=Network)
+	float ServerCorrectionSpeed = 10.f;
+
+	void MoveProxies(float DeltaTime);
+	float CurrentProxyDelta = FLT_MAX;
+	UPROPERTY(EditAnywhere, Category=Network)
+	float ProxyCorrectionSpeed = 10.f;
+	UPROPERTY(EditAnywhere, Category=Network)
+	float ProxyToTargetMin = 20.f;
+
+	UFUNCTION(Server, Reliable)
+	void ServerSendMove(FShooterMove ClientMove);
+	
+	TArray<FShooterMove> UnacknowledgedMoves;
+	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
+	FShooterStatus StatusOnServer;
+	UFUNCTION()
+	void OnRep_StatusOnServer();
+	
+	void ClearAcknowledgedMoves();
+	
+	void PlayUnacknowledgedMoves();
+	FVector CSPLocation;
+	/**
+	 * @end 
+	 */
+	
 	//Input Functions
 	const float FixedTimeStep = 1.f/60.f;
 	float AccumulatedDeltaTime = 0.f;
@@ -345,7 +378,7 @@ private:
 	FVector BoostDirection;
 	bool bBoostPressed = false;
 	
-	void Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime);
+	void Boost_Internal(FVector BoostVector, bool bBoostWasPressed, FTransform InActorTransform, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Boost)
 	float BoostLastVelocityReduction = 1.15f;
 	
@@ -371,19 +404,8 @@ private:
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 	
-	UFUNCTION(Server, Reliable)
-	void SendServerMove(FShooterMove ClientMove);
-
-	TArray<FShooterMove> UnacknowledgedMoves;
-	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
-	FShooterStatus StatusOnServer;
-	FShooterStatus StatusOnClient;
-
 	void ZeroOutGravity();
-	UFUNCTION()
-	void OnRep_StatusOnServer();
-	void ClearAcknowledgedMoves();
-	void PlayUnacknowledgedMoves();
+
 	
 	
 public:

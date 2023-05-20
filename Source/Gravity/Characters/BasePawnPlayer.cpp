@@ -77,7 +77,6 @@ void ABasePawnPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ABasePawnPlayer, StatusOnServer);
-	DOREPLIFETIME_CONDITION(ABasePawnPlayer, bIsMagnetized, COND_SkipOwner);
 }
 
 void ABasePawnPlayer::BeginPlay()
@@ -85,7 +84,7 @@ void ABasePawnPlayer::BeginPlay()
 	Super::BeginPlay();
 
 	// Make sure that we have a valid PlayerController.
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		// Get the Enhanced Input Local Player Subsystem from the Local Player related to our Player Controller.
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
@@ -93,7 +92,7 @@ void ABasePawnPlayer::BeginPlay()
 			// PawnClientRestart can run more than once in an Actor's lifetime, so start by clearing out any leftover mappings.
 			Subsystem->ClearAllMappings();
 
-			// Add each mapping context, along with their priority values. Higher values outprioritize lower values.
+			// Add each mapping context, along with their priority values. Higher values out prioritize lower values.
 			Subsystem->AddMappingContext(CharacterMovementMapping, 2.f);
 			Subsystem->AddMappingContext(CharacterCombatMapping, 1.f);
 		}
@@ -111,13 +110,15 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
-	
-	DebugMode();
 	//current fixed time step of 60 per second
 	AccumulatedDeltaTime += DeltaTime;
 	if(AccumulatedDeltaTime >= FixedTimeStep)
 	{
 		ShooterMovement(FixedTimeStep);
+		InterpAutonomousCSPTransform(FixedTimeStep);
+		PlayClientMoves(FixedTimeStep);
+		MoveProxies(FixedTimeStep);
+		DebugMode();
 	}
 }
 
@@ -139,7 +140,6 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	}
 }
 
-
 void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 {
 	if(IsLocallyControlled())
@@ -151,29 +151,29 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 		BuildJump(MoveToSend);
 		BuildMagnetized(MoveToSend);
 		BuildBoost(MoveToSend);
-		
+		MoveToSend.MoveTransform = GetActorTransform();
+		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
 
 		AddActorWorldOffset(Movement_Internal(MoveToSend.MovementVector, GetActorTransform(), DeltaTime));
 		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
-		AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, GetActorTransform(), DeltaTime));
+		AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped,GetActorTransform(), DeltaTime));
 		Magnetize_Internal(MoveToSend.bMagnetized);
-		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, BoostCount, GetActorTransform(), DeltaTime);
+		Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, GetActorTransform(), DeltaTime);
 		SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
-
-		if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
-		MoveToSend.MoveTransform = GetActorTransform();
 		
 		if(!HasAuthority())
-		{
+		{	
 			UnacknowledgedMoves.Add(MoveToSend);
-			SendServerMove(MoveToSend);
+			ServerSendMove(MoveToSend);
 		}
 		if(HasAuthority())
 		{
 			StatusOnServer.ShooterTransform = GetActorTransform();
 			StatusOnServer.bMagnetized = bIsMagnetized;
+			StatusOnServer.LastVelocity = LastVelocity;
+			StatusOnServer.BoostCount = BoostCount;
 		}
 	}
 }
@@ -265,7 +265,7 @@ FVector ABasePawnPlayer::CalculateMovementVelocity(FTransform ActorTransform, fl
 		const FVector NewPosition = SphereToActor.RotateAngleAxis(SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
 		return LastVelocity = NewPosition - SphereToActor;
 	}
-	if(FloorStatus == EShooterFloorStatus::SphereLevelContact && bIsMagnetized) //if walking in a sphere and magnetized OR jumping on levelsphere
+	if(FloorStatus == EShooterFloorStatus::SphereLevelContact && bIsMagnetized) //if walking in a sphere and magnetized OR jumping on level sphere
 	{
 		if(ControlInputVector.Size() == 0.f)
 		{
@@ -471,7 +471,7 @@ void ABasePawnPlayer::BuildBoost(FShooterMove& OutMove)
 	}
 }
 
-void ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPressed, int8 InBoostCount, FTransform InActorTransform, float DeltaTime)
+void ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPressed, FTransform InActorTransform, float DeltaTime)
 {
 	if(bBoostWasPressed)
 	{
@@ -661,8 +661,6 @@ FVector ABasePawnPlayer::GravityForce(FVector InActorLocation, float DeltaTime)
 	}
 	LastVelocity = FMath::VInterpTo(LastVelocity, FVector::ZeroVector, DeltaTime, GravityVelocityReduction);
 	SphereLastVelocity = FVector::ZeroVector;
-	
-	
 	return NewVector;
 }
 void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -760,25 +758,8 @@ void ABasePawnPlayer::SetFloorStatus(EShooterFloorStatus InFloorStatus)
 	FloorStatus = InFloorStatus;
 	if(FloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		Capsule->SetLinearDamping(AirFriction);
 		ZeroOutGravity();
 	}
-	else
-	{
-		Capsule->SetLinearDamping(FloorFriction);
-	}
-}
-
-void ABasePawnPlayer::SendServerMove_Implementation(FShooterMove ClientMove)
-{
-	Movement_Internal(ClientMove.MovementVector, GetActorTransform(), FixedTimeStep);
-	// Look_Internal(ClientMove.PitchVector);
-	// Jump_Internal(ClientMove.bJumped);
-	Magnetize_Internal(ClientMove.bMagnetized);
-	// Boost_Internal(ClientMove.BoostDirection, ClientMove.bBoost);
-	StatusOnServer.ShooterTransform = GetActorTransform();
-	StatusOnServer.bMagnetized = bIsMagnetized;
-	StatusOnServer.LastMove = ClientMove;
 }
 
 void ABasePawnPlayer::ZeroOutGravity()
@@ -790,12 +771,43 @@ void ABasePawnPlayer::ZeroOutGravity()
 	CurrentGravity = FVector::ZeroVector;
 }
 
+
+void ABasePawnPlayer::ServerSendMove_Implementation(FShooterMove ClientMove)
+{
+	LastVelocity = Movement_Internal(ClientMove.MovementVector, ClientMove.MoveTransform, FixedTimeStep);
+	StatusOnServer.LastVelocity = LastVelocity;
+	StatusOnServer.LastMove = ClientMove;
+	
+	// Look_Internal(ClientMove.PitchVector);
+	// Jump_Internal(ClientMove.bJumped);
+	// Magnetize_Internal(ClientMove.bMagnetized);
+	// Boost_Internal(ClientMove.BoostDirection, ClientMove.bBoost);
+	
+// 	StatusOnServer.ShooterTransform = GetActorTransform();
+//  StatusOnServer.bMagnetized = bIsMagnetized;
+// 	StatusOnServer.LastMove = ClientMove;
+}
+
+void ABasePawnPlayer::PlayClientMoves(float DeltaTime)
+{
+	if(HasAuthority() && !IsLocallyControlled())
+	{
+		AddActorWorldOffset(LastVelocity);
+		StatusOnServer.ShooterTransform = GetActorTransform();
+	}
+}
+
 void ABasePawnPlayer::OnRep_StatusOnServer()
 {
-	SetActorTransform(StatusOnServer.ShooterTransform);
-	bIsMagnetized = StatusOnServer.bMagnetized;
-	ClearAcknowledgedMoves();
-	PlayUnacknowledgedMoves();
+	if(!IsLocallyControlled())
+	{
+		LastVelocity = StatusOnServer.LastVelocity;
+	}
+	else
+	{
+		ClearAcknowledgedMoves();
+		PlayUnacknowledgedMoves();
+	}
 }
 
 void ABasePawnPlayer::ClearAcknowledgedMoves()
@@ -813,22 +825,68 @@ void ABasePawnPlayer::ClearAcknowledgedMoves()
 
 void ABasePawnPlayer::PlayUnacknowledgedMoves()
 {
+	CSPLocation = StatusOnServer.ShooterTransform.GetLocation(); 
 	for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
 	{
-		Movement_Internal(MoveToPlay.MovementVector, FTransform::Identity, FixedTimeStep);
+		CSPLocation += Movement_Internal(MoveToPlay.MovementVector, MoveToPlay.MoveTransform, FixedTimeStep);
+		DrawDebugPoint(GetWorld(), CSPLocation, 30.f, FColor::Green);
+		
 		// Jump_Internal(MoveToPlay.bJumped);
-		Magnetize_Internal(MoveToPlay.bMagnetized);
+		// Magnetize_Internal(MoveToPlay.bMagnetized);
 		// Boost_Internal(MoveToPlay.BoostDirection, MoveToPlay.bBoost);
 	}
+	CurrentCSPDelta = (GetActorLocation() - CSPLocation).Size();
+}
+
+void ABasePawnPlayer::InterpAutonomousCSPTransform(float DeltaTime)
+{
+	if(CurrentCSPDelta > ServerClintDeltaTolerance)
+	{
+		const FVector CurrentVector = GetActorLocation();
+		const FRotator CurrentRotation = GetActorRotation();
+		const FVector ToServerLocation = FMath::VInterpTo(CurrentVector, CSPLocation, DeltaTime, ServerCorrectionSpeed);
+		// const FRotator ToServerRotation = FMath::RInterpTo(CurrentRotation, CSPRotation.Rotator(), DeltaTime, ServerCorrectionSpeed);
+		SetActorLocation(ToServerLocation);
+		// SetActorRotation(NewRotation);
+		CurrentCSPDelta = (ToServerLocation - GetActorLocation()).Size();
+	}
+}
+
+void ABasePawnPlayer::MoveProxies(float DeltaTime)
+{
+	// if(!HasAuthority() && !IsLocallyControlled())
+	// {
+	// 	if(CurrentProxyDelta < ProxyToTargetMin) //while the current location is far away, InterpTo
+	// 	{
+	// 		UE_LOG(LogTemp, Warning, TEXT("INTERP"));
+	// 		const FVector CurrentLocation = GetActorLocation();
+	// 		const FVector NewLocation = StatusOnServer.ShooterTransform.GetLocation();
+	// 		const FVector InterpLocation = FMath::VInterpTo(CurrentLocation, NewLocation, DeltaTime, ProxyCorrectionSpeed);
+	// 		const FRotator CurrentRotation = GetActorRotation();
+	// 		const FRotator NewRotation = StatusOnServer.ShooterTransform.GetRotation().Rotator();
+	// 		const FRotator InterpRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, ProxyCorrectionSpeed);
+	// 		CurrentProxyDelta = (CurrentLocation - NewLocation).Size();
+	// 		SetActorLocation(InterpLocation);
+	// 		SetActorRotation(InterpRotation);
+	// 	}
+	// 	else //else keep the actor going its last velocity
+	// 	{
+	// 		UE_LOG(LogTemp, Warning, TEXT("EXTRAP"));
+	// 		AddActorWorldOffset(Movement_Internal(StatusOnServer.LastVelocity, StatusOnServer.ShooterTransform, DeltaTime));
+	// 	}
+	// }
 }
 
 void ABasePawnPlayer::DebugMode() const
 {
-	if(bIsInDebugMode)
+	if(bIsInDebugMode && IsLocallyControlled())
 	{
 		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (LastVelocity * 10.f), FColor::Green);
 		if(GEngine)
 		{
+			GEngine->AddOnScreenDebugMessage(-1,0.f, FColor::Green, FString::Printf(TEXT("%s"), *GetName()));
+			const FColor CSPDeltaColor = CurrentCSPDelta > ServerClintDeltaTolerance ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, CSPDeltaColor, FString::Printf(TEXT("CurrentCSPDelta: %f"), CurrentCSPDelta));
 			const FColor BoostCountColor = BoostCount == 0 ? FColor::Red : FColor::Green;
 			GEngine->AddOnScreenDebugMessage(-1,0.f, BoostCountColor, FString::Printf(TEXT("BoostCount: %i"), BoostCount));
 			const FColor MagnetizeColor = bIsMagnetized ? FColor::Green : FColor::Red;
