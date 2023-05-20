@@ -30,9 +30,11 @@ struct FShooterMove
 	GENERATED_BODY()
 
 	UPROPERTY()
-	FTransform MoveTransform = FTransform::Identity;
+	FVector_NetQuantize ActorLocation = FVector::ZeroVector;
 	UPROPERTY()
-	FVector MovementVector = FVector::ZeroVector;
+	FRotator ActorRotation =FRotator::ZeroRotator;
+	UPROPERTY()
+	FVector_NetQuantize MovementVector = FVector::ZeroVector;
 	UPROPERTY()
 	float PitchRotation = 0.f;
 	UPROPERTY()
@@ -44,7 +46,7 @@ struct FShooterMove
 	UPROPERTY()
 	bool bBoost = false;
 	UPROPERTY()
-	FVector BoostDirection = FVector::ZeroVector;
+	FVector_NetQuantize BoostDirection = FVector::ZeroVector;
 	UPROPERTY()
 	float GameTime;
 };
@@ -192,6 +194,8 @@ private:
 	void PlayClientMoves(float DeltaTime);
 	
 	void InterpAutonomousCSPTransform(float DeltaTime);
+	bool bIsInterpolating = false;
+	
 	float CurrentCSPDelta = 0.f;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ServerClintDeltaTolerance = 200.f;
@@ -237,11 +241,11 @@ private:
 	void BuildMovement(FShooterMove& OutMove);
 	FVector MoveVector;
 	
-	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, FVector LastVelocity, float DeltaTime);
+	FVector Movement_Internal(const FVector ActionValue, FVector ActorLocation, FRotator ActorRotation, FVector LastVelocity, float DeltaTime);
 	
-	FVector TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime) const;
+	FVector TotalMovementInput(const FVector ActionValue, FRotator ActorRotation, float DeltaTime) const;
 	
-	FVector CalculateMovementVelocity(FVector InMovementInput, FTransform ActorTransform, FVector LastVelocity, float DeltaTime);
+	FVector CalculateMovementVelocity(FVector InMovementInput, FVector ActorLocation, FRotator ActorRotation, FVector LastVelocity, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float SphereFloorMovementPercent = 0.025f;
 	UPROPERTY(EditAnywhere, Category=Movement)
