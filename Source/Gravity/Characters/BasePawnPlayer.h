@@ -61,7 +61,7 @@ struct FShooterStatus
 	UPROPERTY()
 	int8 BoostCount;
 	UPROPERTY()
-	FVector LastVelocity = FVector::ZeroVector;
+	FVector CurrentVelocity = FVector::ZeroVector;
 	UPROPERTY()
     FShooterMove LastMove;
 	
@@ -194,14 +194,14 @@ private:
 	void InterpAutonomousCSPTransform(float DeltaTime);
 	float CurrentCSPDelta = 0.f;
 	UPROPERTY(EditAnywhere, Category=Network)
-	float ServerClintDeltaTolerance = 100.f;
+	float ServerClintDeltaTolerance = 200.f;
 	UPROPERTY(EditAnywhere, Category=Network)
-	float ServerCorrectionSpeed = 10.f;
+	float ServerCorrectionSpeed = 3.f;
 
 	void MoveProxies(float DeltaTime);
 	float CurrentProxyDelta = FLT_MAX;
 	UPROPERTY(EditAnywhere, Category=Network)
-	float ProxyCorrectionSpeed = 10.f;
+	float ProxyCorrectionSpeed = 3.f;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ProxyToTargetMin = 20.f;
 
@@ -237,16 +237,17 @@ private:
 	void BuildMovement(FShooterMove& OutMove);
 	FVector MoveVector;
 	
-	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
+	FVector Movement_Internal(const FVector ActionValue, FTransform ActorTransform, FVector LastVelocity, float DeltaTime);
 	
-	void TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime);
+	FVector TotalMovementInput(const FVector ActionValue, FTransform ActorTransform, float DeltaTime) const;
 	
-	FVector CalculateMovementVelocity(FTransform ActorTransform, float DeltaTime);
+	FVector CalculateMovementVelocity(FVector InMovementInput, FTransform ActorTransform, FVector LastVelocity, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float SphereFloorMovementPercent = 0.025f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float LevelSphereMovementPercent = 0.0075f;
-	FVector LastVelocity = FVector::ZeroVector;
+	FVector CurrentVelocity = FVector::ZeroVector;
+	FVector CSPVelocity = FVector::ZeroVector;
 	FVector SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundForwardSpeed = 1000.f;
