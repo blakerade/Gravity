@@ -24,21 +24,29 @@ class UInputAction;
 class UInputMappingContext;
 class UShooterCombatComponent;
 
+UENUM()
+enum class EShooterSpin : uint8
+{
+	FrontFlip UMETA(DisplayName = "Spin Forwards"),
+	BackFlip UMETA(DisplayName = "Spin Backwards"),
+	NoFlip UMETA(DisplayName = "Don't Spin"),
+};
+
 USTRUCT()
 struct FShooterMove
 {
 	GENERATED_BODY()
 
 	UPROPERTY()
-	FVector_NetQuantize ActorLocation = FVector::ZeroVector;
+	FVector_NetQuantize ShooterLocation = FVector::ZeroVector;
 	UPROPERTY()
-	FRotator ActorRotation =FRotator::ZeroRotator;
+	FRotator ShooterRotation = FRotator::ZeroRotator;
 	UPROPERTY()
 	FVector_NetQuantize MovementVector = FVector::ZeroVector;
 	UPROPERTY()
-	float PitchRotation = 0.f;
+	int16 PitchRotation = 0;
 	UPROPERTY()
-	float YawRotation =  0.f;
+	int16 YawRotation =  0;
 	UPROPERTY()
 	bool bJumped = false;
 	UPROPERTY()
@@ -57,7 +65,13 @@ struct FShooterStatus
 	GENERATED_BODY()
 
 	UPROPERTY()
-	FTransform ShooterTransform;
+	FVector_NetQuantize ShooterLocation;
+	UPROPERTY()
+	FRotator ShooterRotation;
+	UPROPERTY()
+	float SpringArmPitch;
+	UPROPERTY()
+	float SpringArmYaw;
 	UPROPERTY()
 	bool bMagnetized;
 	UPROPERTY()
@@ -66,15 +80,10 @@ struct FShooterStatus
 	FVector CurrentVelocity = FVector::ZeroVector;
 	UPROPERTY()
     FShooterMove LastMove;
-	
-};
-
-UENUM()
-enum class EShooterSpin : uint8
-{
-	FrontFlip UMETA(DisplayName = "Spin Forwards"),
-	BackFlip UMETA(DisplayName = "Spin Backwards"),
-	NoFlip UMETA(DisplayName = "Don't Spin"),
+	UPROPERTY()
+	EShooterFloorStatus ShooterFloorStatus;
+	UPROPERTY()
+	EShooterSpin ShooterSpin;
 };
 
 UCLASS()
@@ -191,23 +200,24 @@ protected:
 
 private:
 	//everything involved with network smoothing
-	void PlayClientMoves(float DeltaTime);
-	
 	void InterpAutonomousCSPTransform(float DeltaTime);
-	bool bIsInterpolating = false;
+	bool bIsInterpolatingClientStatus = false;
+	bool bIsExtrapolating = false;
 	
 	float CurrentCSPDelta = 0.f;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ServerClintDeltaTolerance = 200.f;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ServerCorrectionSpeed = 3.f;
+	UPROPERTY(EditAnywhere, Category=Network)
+	float IdleServerCorrectionSpeed = 0.15f;
 
-	void MoveProxies(float DeltaTime);
+	void MoveClientProxies(float DeltaTime);
 	float CurrentProxyDelta = FLT_MAX;
 	UPROPERTY(EditAnywhere, Category=Network)
-	float ProxyCorrectionSpeed = 3.f;
+	float ProxyCorrectionSpeed = 4.f;
 	UPROPERTY(EditAnywhere, Category=Network)
-	float ProxyToTargetMin = 20.f;
+	float ProxyToTargetMin = 50.f;
 
 	UFUNCTION(Server, Reliable)
 	void ServerSendMove(FShooterMove ClientMove);
@@ -215,13 +225,15 @@ private:
 	TArray<FShooterMove> UnacknowledgedMoves;
 	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
 	FShooterStatus StatusOnServer;
+	FShooterStatus CSPStatus;
+	
 	UFUNCTION()
 	void OnRep_StatusOnServer();
 	
 	void ClearAcknowledgedMoves();
 	
 	void PlayUnacknowledgedMoves();
-	FVector CSPLocation;
+	
 	/**
 	 * @end 
 	 */
@@ -251,7 +263,6 @@ private:
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float LevelSphereMovementPercent = 0.0075f;
 	FVector CurrentVelocity = FVector::ZeroVector;
-	FVector CSPVelocity = FVector::ZeroVector;
 	FVector SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundForwardSpeed = 1000.f;
@@ -281,7 +292,7 @@ private:
 	UPROPERTY(Replicated)
 	float SpringArmClientPitch;
 	
-	FRotator PitchLook_Internal(float ActionValueY, float DeltaTime);
+	FRotator PitchLook_Internal(float ActionValueY, EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, float InSpringArmYaw, EShooterFloorStatus InFloorStatus, float DeltaTime);
 	float SpringArmPitch;
 	float SpringArmYaw;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
@@ -416,7 +427,7 @@ private:
 public:
 	FORCEINLINE EShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
 	void SetFloorStatus(EShooterFloorStatus InFloorStatus);
-	FORCEINLINE float GetSpringArmPitch() const { return SpringArmPitch; }
+	float GetSpringArmPitch() const;
 	FORCEINLINE bool GetIsMagnetized() const {return bIsMagnetized;}
 	FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
@@ -424,3 +435,4 @@ public:
 	FORCEINLINE UShooterCombatComponent* GetCombatComponent() const { return Combat; }
 	FORCEINLINE UShooterHealthComponent* GetHealthComponent() const { return Health; }
 };
+

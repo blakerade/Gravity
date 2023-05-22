@@ -102,8 +102,19 @@ void ABasePawnPlayer::BeginPlay()
 		Capsule->OnComponentHit.AddDynamic(this, &ABasePawnPlayer::OnFloorHit);
 	}
 	OnTakeAnyDamage.AddDynamic(this, &ABasePawnPlayer::PassDamageToHealth);
-	SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
-	SpringArmYaw = SpringArm->GetRelativeRotation().Yaw;
+	if(IsLocallyControlled())
+	{
+		SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
+		SpringArmYaw = SpringArm->GetRelativeRotation().Yaw;
+	}
+	else
+	{
+		StatusOnServer.ShooterLocation = GetActorLocation();
+		StatusOnServer.SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
+		StatusOnServer.SpringArmYaw = SpringArm->GetRelativeRotation().Yaw;
+		StatusOnServer.ShooterFloorStatus = EShooterFloorStatus::NoFloorContact;
+		StatusOnServer.ShooterSpin = EShooterSpin::NoFlip;
+	}
 }
 
 void ABasePawnPlayer::Tick(float DeltaTime)
@@ -116,8 +127,7 @@ void ABasePawnPlayer::Tick(float DeltaTime)
 	{
 		ShooterMovement(FixedTimeStep);
 		InterpAutonomousCSPTransform(FixedTimeStep);
-		PlayClientMoves(FixedTimeStep);
-		MoveProxies(FixedTimeStep);
+		MoveClientProxies(FixedTimeStep);
 		DebugMode();
 	}
 }
@@ -145,43 +155,46 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 	if(IsLocallyControlled())
 	{
 		FShooterMove MoveToSend;
-		if(!bIsInterpolating)
+		BuildLook(MoveToSend);
+		if(!bIsInterpolatingClientStatus)
 		{
-			//build the move to either execute or send to the server
+			//build the move to either execute or send to the server and the server is not fixing our position
 			
 			BuildMovement(MoveToSend);
-			BuildLook(MoveToSend);
+
 			BuildJump(MoveToSend);
 			BuildMagnetized(MoveToSend);
 			BuildBoost(MoveToSend);
-			MoveToSend.ActorLocation = GetActorLocation();
-			MoveToSend.ActorRotation = GetActorRotation();
+			MoveToSend.ShooterLocation = GetActorLocation();
+			MoveToSend.ShooterRotation = GetActorRotation();
 			if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
 
 			CurrentVelocity += Movement_Internal(MoveToSend.MovementVector, GetActorLocation(), GetActorRotation(), CurrentVelocity, DeltaTime);
 			AddActorWorldOffset(CurrentVelocity);
-			SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, DeltaTime));
-			AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
-			AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
+			
 			AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped,GetActorTransform(), DeltaTime));
 			Magnetize_Internal(MoveToSend.bMagnetized);
 			Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, GetActorTransform(), DeltaTime);
 			SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
 		}
-		else
+		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, ShooterSpin, SpringArmPitch, SpringArmYaw, FloorStatus, DeltaTime));
+		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
+		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
+
+		
+		if(!HasAuthority() && !bIsInterpolatingClientStatus)
 		{
-			CurrentVelocity = StatusOnServer.CurrentVelocity;
-		}
-		
-		
-		if(!HasAuthority() && !bIsInterpolating)
-		{	
 			UnacknowledgedMoves.Add(MoveToSend);
 			ServerSendMove(MoveToSend);
 		}
 		if(HasAuthority())
 		{
-			StatusOnServer.ShooterTransform = GetActorTransform();
+			StatusOnServer.ShooterLocation = GetActorLocation();
+			StatusOnServer.SpringArmPitch = SpringArmPitch;
+			StatusOnServer.SpringArmYaw = SpringArmYaw;
+			StatusOnServer.ShooterFloorStatus = FloorStatus;
+			StatusOnServer.ShooterSpin = ShooterSpin;
+			StatusOnServer.ShooterRotation = GetActorRotation();
 			StatusOnServer.bMagnetized = bIsMagnetized;
 			StatusOnServer.CurrentVelocity = CurrentVelocity;
 			StatusOnServer.BoostCount = BoostCount;
@@ -305,22 +318,22 @@ void ABasePawnPlayer::BuildLook(FShooterMove& OutMove)
 	YawValue = 0.f;
 }
 
-FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, float DeltaTime)
+FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, float InSpringArmYaw, EShooterFloorStatus InFloorStatus, float DeltaTime)
 {
-	SpringArmPitch = FMath::Clamp(SpringArmPitch + (ActionValueY * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
-	if(SpringArmPitch > (SpringArmPitchMax - 1.5f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
+	OutSpringArmPitch = FMath::Clamp(OutSpringArmPitch + (ActionValueY * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
+	if(OutSpringArmPitch > (OutSpringArmPitch - 1.5f) && InFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		ShooterSpin = EShooterSpin::BackFlip;
+		OutShooterSpin = EShooterSpin::BackFlip;
 	}
-	else if(SpringArmPitch < (SpringArmPitchMin + 1.5f) && FloorStatus == EShooterFloorStatus::NoFloorContact)
+	else if(OutSpringArmPitch < (SpringArmPitchMin + 1.5f) && InFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		ShooterSpin = EShooterSpin::FrontFlip;
+		OutShooterSpin = EShooterSpin::FrontFlip;
 	}
 	else
 	{
-		ShooterSpin = EShooterSpin::NoFlip;
+		OutShooterSpin = EShooterSpin::NoFlip;
 	}
-	return FRotator(SpringArmPitch, SpringArmYaw, 0.f);
+	return FRotator(OutSpringArmPitch, InSpringArmYaw, 0.f);
 }
 
 FRotator ABasePawnPlayer::AddShooterSpin_Internal(float ActionValueY, float DeltaTime)
@@ -660,6 +673,7 @@ FVector ABasePawnPlayer::GravityForce(FVector InActorLocation, float DeltaTime)
 	SphereLastVelocity = FVector::ZeroVector;
 	return NewVector;
 }
+
 void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if(FloorStatus == EShooterFloorStatus::NoFloorContact && bIsMagnetized)
@@ -739,10 +753,8 @@ FVector ABasePawnPlayer::GetHitTarget()
 	{
 		return Combat->HitTarget;
 	}
-	else
-	{
-		return FVector::ZeroVector;
-	}
+	return FVector::ZeroVector;
+	
 }
 
 void ABasePawnPlayer::PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
@@ -771,41 +783,23 @@ void ABasePawnPlayer::ZeroOutGravity()
 
 void ABasePawnPlayer::ServerSendMove_Implementation(FShooterMove ClientMove)
 {
-	CurrentVelocity += Movement_Internal(ClientMove.MovementVector, ClientMove.ActorLocation, ClientMove.ActorRotation, CurrentVelocity, FixedTimeStep);
-	StatusOnServer.CurrentVelocity = CurrentVelocity; 
-	StatusOnServer.LastMove = ClientMove;
-	
-	// Look_Internal(ClientMove.PitchVector);
-	// Jump_Internal(ClientMove.bJumped);
-	// Magnetize_Internal(ClientMove.bMagnetized);
-	// Boost_Internal(ClientMove.BoostDirection, ClientMove.bBoost);
-	
-// 	StatusOnServer.ShooterTransform = GetActorTransform();
-//  StatusOnServer.bMagnetized = bIsMagnetized;
-// 	StatusOnServer.LastMove = ClientMove;
-}
 
-void ABasePawnPlayer::PlayClientMoves(float DeltaTime)
-{
-	if(HasAuthority() && !IsLocallyControlled())
-	{
-		AddActorWorldOffset(CurrentVelocity);
-		StatusOnServer.ShooterTransform = GetActorTransform();
-	}
+	CSPStatus = StatusOnServer;
+	
+	CSPStatus.CurrentVelocity += Movement_Internal(ClientMove.MovementVector, ClientMove.ShooterLocation, ClientMove.ShooterRotation, CSPStatus.CurrentVelocity, FixedTimeStep);
+	SpringArm->SetRelativeRotation(PitchLook_Internal(ClientMove.PitchRotation, CSPStatus.ShooterSpin, CSPStatus.SpringArmPitch, CSPStatus.SpringArmYaw, CSPStatus.ShooterFloorStatus, FixedTimeStep));
+	CSPStatus.ShooterLocation = StatusOnServer.ShooterLocation + CSPStatus.CurrentVelocity;
+
+	StatusOnServer.ShooterLocation = CSPStatus.ShooterLocation;
+	StatusOnServer.CurrentVelocity = CSPStatus.CurrentVelocity;
+	StatusOnServer.LastMove = ClientMove;
 }
 
 void ABasePawnPlayer::OnRep_StatusOnServer()
 {
-	if(!IsLocallyControlled())
-	{
-		CSPLocation = StatusOnServer.ShooterTransform.GetLocation();
-		CSPVelocity = StatusOnServer.CurrentVelocity;
-	}
-	else
-	{
-		ClearAcknowledgedMoves();
-		PlayUnacknowledgedMoves();
-	}
+	CSPStatus = StatusOnServer;
+	ClearAcknowledgedMoves();
+	PlayUnacknowledgedMoves();
 }
 
 void ABasePawnPlayer::ClearAcknowledgedMoves()
@@ -823,65 +817,83 @@ void ABasePawnPlayer::ClearAcknowledgedMoves()
 
 void ABasePawnPlayer::PlayUnacknowledgedMoves()
 {
-	CSPLocation = StatusOnServer.ShooterTransform.GetLocation();
-	CSPVelocity = StatusOnServer.CurrentVelocity;
-	for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
+	if(!bIsInterpolatingClientStatus)
 	{
-		CSPVelocity += Movement_Internal(MoveToPlay.MovementVector, MoveToPlay.ActorLocation, MoveToPlay.ActorRotation, CSPVelocity, FixedTimeStep);
-		CSPLocation += CSPVelocity;
+		for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
+		{
+			CSPStatus.CurrentVelocity += Movement_Internal(MoveToPlay.MovementVector, MoveToPlay.ShooterLocation, MoveToPlay.ShooterRotation, CSPStatus.CurrentVelocity, FixedTimeStep);
+			CSPStatus.ShooterLocation += CSPStatus.CurrentVelocity;
+			DrawDebugPoint(GetWorld(), CSPStatus.ShooterLocation, 30.f, FColor::Blue);
+			SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToPlay.PitchRotation, CSPStatus.ShooterSpin, CSPStatus.SpringArmPitch, CSPStatus.SpringArmYaw, CSPStatus.ShooterFloorStatus, FixedTimeStep));
 		
-		// Jump_Internal(MoveToPlay.bJumped);
-		// Magnetize_Internal(MoveToPlay.bMagnetized);
-		// Boost_Internal(MoveToPlay.BoostDirection, MoveToPlay.bBoost);
+		}
+		CurrentCSPDelta = (GetActorLocation() - StatusOnServer.ShooterLocation).Size();
 	}
-	CurrentCSPDelta = (GetActorLocation() - CSPLocation).Size();
 	if(bIsInDebugMode)
 	{
-		DrawDebugPoint(GetWorld(), CSPLocation, 20.f, FColor::Green);
+		DrawDebugPoint(GetWorld(), StatusOnServer.ShooterLocation, 20.f, FColor::Green);
 	}
 }
 
 void ABasePawnPlayer::InterpAutonomousCSPTransform(float DeltaTime)
 {
-	if(CurrentCSPDelta > ServerClintDeltaTolerance)
+	if(!HasAuthority() && IsLocallyControlled())
 	{
-		const FVector CurrentVector = GetActorLocation();
-		const FRotator CurrentRotation = GetActorRotation();
-		const FVector ToServerLocation = FMath::VInterpTo(CurrentVector, CSPLocation, DeltaTime, ServerCorrectionSpeed);
-		// const FRotator ToServerRotation = FMath::RInterpTo(CurrentRotation, CSPRotation.Rotator(), DeltaTime, ServerCorrectionSpeed);
-		SetActorLocation(ToServerLocation);
-		// SetActorRotation(NewRotation);
-		UnacknowledgedMoves.Empty();
-		bIsInterpolating = true;
-	}
-	else
-	{
-		bIsInterpolating = false;
+		if(CurrentCSPDelta > ServerClintDeltaTolerance)
+		{
+			const FVector CurrentVector = GetActorLocation();
+			const FRotator CurrentRotation = GetActorRotation();
+			const FVector ToServerLocation = FMath::VInterpTo(CurrentVector,  StatusOnServer.ShooterLocation, DeltaTime, ServerCorrectionSpeed);
+			CurrentCSPDelta = (GetActorLocation() - StatusOnServer.ShooterLocation).Size();
+			// const FRotator ToServerRotation = FMath::RInterpTo(CurrentRotation, CSPRotation.Rotator(), DeltaTime, ServerCorrectionSpeed);
+			SetActorLocation(ToServerLocation);
+			// SetActorRotation(NewRotation);
+			UnacknowledgedMoves.Empty();
+			bIsInterpolatingClientStatus = true;
+		}
+		else
+		{
+			const FVector CurrentVector = GetActorLocation();
+			const FVector ToServerLocation = FMath::VInterpTo(CurrentVector,  StatusOnServer.ShooterLocation, DeltaTime, IdleServerCorrectionSpeed);
+			CurrentCSPDelta = (GetActorLocation() - StatusOnServer.ShooterLocation).Size();
+			SetActorLocation(ToServerLocation);
+			bIsInterpolatingClientStatus = false;
+		}
 	}
 }
 
-void ABasePawnPlayer::MoveProxies(float DeltaTime)
+void ABasePawnPlayer::MoveClientProxies(float DeltaTime)
 {
-	if(!HasAuthority() && !IsLocallyControlled())
+	if(!IsLocallyControlled())
 	{
-		CurrentProxyDelta = (CSPLocation - GetActorLocation()).Size();
+		CurrentProxyDelta = (StatusOnServer.ShooterLocation - GetActorLocation()).Size();
 		if(CurrentProxyDelta > ProxyToTargetMin) //while the current location is far away, InterpTo
 		{
 			const FVector CurrentLocation = GetActorLocation();
-			const FVector NewLocation = CSPLocation;
+			const FVector NewLocation = StatusOnServer.ShooterLocation;
 			const FVector InterpLocation = FMath::VInterpTo(CurrentLocation, NewLocation, DeltaTime, ProxyCorrectionSpeed);
 			// const FRotator CurrentRotation = GetActorRotation();
-			const FRotator NewRotation = StatusOnServer.ShooterTransform.GetRotation().Rotator();
+			const FRotator NewRotation = StatusOnServer.ShooterRotation;
 			// const FRotator InterpRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, ProxyCorrectionSpeed);
 			SetActorLocation(InterpLocation);
 			// SetActorRotation(InterpRotation);
 		}
-		else //else keep the actor going its last velocity
+		else//else keep the actor going its last velocity extrapolate 
 		{
-			AddActorWorldOffset(CSPVelocity);
+			AddActorWorldOffset(StatusOnServer.CurrentVelocity);
+			SpringArm->SetRelativeRotation(PitchLook_Internal(StatusOnServer.LastMove.PitchRotation, StatusOnServer.ShooterSpin, StatusOnServer.SpringArmPitch, StatusOnServer.SpringArmYaw, StatusOnServer.ShooterFloorStatus, FixedTimeStep));
 		}
-		DrawDebugPoint(GetWorld(), CSPLocation, 20.f, FColor::Blue);
+		// DrawDebugPoint(GetWorld(), StatusOnServer.ShooterLocation, 20.f, FColor::Blue);
 	}
+}
+
+float ABasePawnPlayer::GetSpringArmPitch() const
+{
+	if(IsLocallyControlled())
+	{
+		return SpringArmPitch; 
+	}
+	return StatusOnServer.SpringArmPitch;
 }
 
 void ABasePawnPlayer::DebugMode() const
