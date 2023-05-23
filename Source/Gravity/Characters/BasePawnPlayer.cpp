@@ -178,7 +178,7 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 			SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
 		}
 		SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToSend.PitchRotation, ShooterSpin, SpringArmPitch, SpringArmYaw, FloorStatus, DeltaTime));
-		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, DeltaTime));
+		AddActorLocalRotation(AddShooterSpin_Internal(MoveToSend.PitchRotation, FloorStatus, ShooterSpin, LastPitchRotation, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(MoveToSend.YawRotation, DeltaTime));
 
 		
@@ -190,6 +190,7 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 		if(HasAuthority())
 		{
 			StatusOnServer.ShooterLocation = GetActorLocation();
+			StatusOnServer.LastPitchRotation = LastPitchRotation;
 			StatusOnServer.SpringArmPitch = SpringArmPitch;
 			StatusOnServer.SpringArmYaw = SpringArmYaw;
 			StatusOnServer.ShooterFloorStatus = FloorStatus;
@@ -321,7 +322,7 @@ void ABasePawnPlayer::BuildLook(FShooterMove& OutMove)
 FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, float InSpringArmYaw, EShooterFloorStatus InFloorStatus, float DeltaTime)
 {
 	OutSpringArmPitch = FMath::Clamp(OutSpringArmPitch + (ActionValueY * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
-	if(OutSpringArmPitch > (OutSpringArmPitch - 1.5f) && InFloorStatus == EShooterFloorStatus::NoFloorContact)
+	if(OutSpringArmPitch > (SpringArmPitchMax - 1.5f) && InFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
 		OutShooterSpin = EShooterSpin::BackFlip;
 	}
@@ -336,35 +337,35 @@ FRotator ABasePawnPlayer::PitchLook_Internal(float ActionValueY, EShooterSpin& O
 	return FRotator(OutSpringArmPitch, InSpringArmYaw, 0.f);
 }
 
-FRotator ABasePawnPlayer::AddShooterSpin_Internal(float ActionValueY, float DeltaTime)
+FRotator ABasePawnPlayer::AddShooterSpin_Internal(float ActionValueY, EShooterFloorStatus InFloorStatus, EShooterSpin InShooterSpin, float& OutLastPitchRotation, float DeltaTime) const
 {
 	//We are not contacted to a floor
-	if(FloorStatus == EShooterFloorStatus::NoFloorContact)
+	if(InFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
 		float NewPitchRotation;
-		switch (ShooterSpin)
+		switch (InShooterSpin)
 		{
 		case EShooterSpin::BackFlip:
 			if(ActionValueY <= 0.f)
 			{
-				return FRotator(LastPitchRotation, 0.f, 0.f);
+				return FRotator(OutLastPitchRotation, 0.f, 0.f);
 			}
-			NewPitchRotation = FMath::Clamp(LastPitchRotation + ActionValueY * AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
-			return FRotator(LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+			NewPitchRotation = FMath::Clamp(OutLastPitchRotation + ActionValueY * AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
+			return FRotator(OutLastPitchRotation = NewPitchRotation, 0.f, 0.f);
 		case EShooterSpin::FrontFlip:
 			if(ActionValueY >= 0.f)
 			{
-				return FRotator(LastPitchRotation, 0.f, 0.f);
+				return FRotator(OutLastPitchRotation, 0.f, 0.f);
 			}
-			NewPitchRotation = FMath::Clamp(LastPitchRotation - ActionValueY * -AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
-			return FRotator(LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+			NewPitchRotation = FMath::Clamp(OutLastPitchRotation - ActionValueY * -AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
+			return FRotator(OutLastPitchRotation = NewPitchRotation, 0.f, 0.f);
 		case EShooterSpin::NoFlip:
-			return FRotator(LastPitchRotation, 0.f, 0.f);
+			return FRotator(OutLastPitchRotation, 0.f, 0.f);
 		default:
-			return FRotator(LastPitchRotation, 0.f, 0.f);
+			return FRotator(OutLastPitchRotation, 0.f, 0.f);
 		}
 	}
-	return FRotator(LastPitchRotation, 0.f, 0.f);
+	return FRotator(OutLastPitchRotation, 0.f, 0.f);
 }
 
 FRotator ABasePawnPlayer::YawLook_Internal(float ActionValueX, float DeltaTime)
@@ -788,10 +789,12 @@ void ABasePawnPlayer::ServerSendMove_Implementation(FShooterMove ClientMove)
 	
 	CSPStatus.CurrentVelocity += Movement_Internal(ClientMove.MovementVector, ClientMove.ShooterLocation, ClientMove.ShooterRotation, CSPStatus.CurrentVelocity, FixedTimeStep);
 	SpringArm->SetRelativeRotation(PitchLook_Internal(ClientMove.PitchRotation, CSPStatus.ShooterSpin, CSPStatus.SpringArmPitch, CSPStatus.SpringArmYaw, CSPStatus.ShooterFloorStatus, FixedTimeStep));
+	CSPStatus.ShooterRotation += AddShooterSpin_Internal(ClientMove.PitchRotation, CSPStatus.ShooterFloorStatus, CSPStatus.ShooterSpin, CSPStatus.LastPitchRotation, FixedTimeStep);
 	CSPStatus.ShooterLocation = StatusOnServer.ShooterLocation + CSPStatus.CurrentVelocity;
+	
 
-	StatusOnServer.ShooterLocation = CSPStatus.ShooterLocation;
-	StatusOnServer.CurrentVelocity = CSPStatus.CurrentVelocity;
+	
+	StatusOnServer = CSPStatus;
 	StatusOnServer.LastMove = ClientMove;
 }
 
@@ -824,14 +827,13 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 			CSPStatus.CurrentVelocity += Movement_Internal(MoveToPlay.MovementVector, MoveToPlay.ShooterLocation, MoveToPlay.ShooterRotation, CSPStatus.CurrentVelocity, FixedTimeStep);
 			CSPStatus.ShooterLocation += CSPStatus.CurrentVelocity;
 			DrawDebugPoint(GetWorld(), CSPStatus.ShooterLocation, 30.f, FColor::Blue);
-			SpringArm->SetRelativeRotation(PitchLook_Internal(MoveToPlay.PitchRotation, CSPStatus.ShooterSpin, CSPStatus.SpringArmPitch, CSPStatus.SpringArmYaw, CSPStatus.ShooterFloorStatus, FixedTimeStep));
-		
+			CSPStatus.ShooterRotation += AddShooterSpin_Internal(MoveToPlay.PitchRotation, CSPStatus.ShooterFloorStatus, CSPStatus.ShooterSpin, CSPStatus.LastPitchRotation, FixedTimeStep);
 		}
-		CurrentCSPDelta = (GetActorLocation() - StatusOnServer.ShooterLocation).Size();
+		CurrentCSPLocationDelta = (GetActorLocation() - CSPStatus.ShooterLocation).Size();
 	}
 	if(bIsInDebugMode)
 	{
-		DrawDebugPoint(GetWorld(), StatusOnServer.ShooterLocation, 20.f, FColor::Green);
+		DrawDebugPoint(GetWorld(), CSPStatus.ShooterLocation, 20.f, FColor::Green);
 	}
 }
 
@@ -839,23 +841,23 @@ void ABasePawnPlayer::InterpAutonomousCSPTransform(float DeltaTime)
 {
 	if(!HasAuthority() && IsLocallyControlled())
 	{
-		if(CurrentCSPDelta > ServerClintDeltaTolerance)
+		if(CurrentCSPLocationDelta > ServerClintDeltaTolerance)
 		{
 			const FVector CurrentVector = GetActorLocation();
+			const FVector ToServerLocation = FMath::VInterpTo(CurrentVector,  CSPStatus.ShooterLocation, DeltaTime, ServerCorrectionSpeed);
 			const FRotator CurrentRotation = GetActorRotation();
-			const FVector ToServerLocation = FMath::VInterpTo(CurrentVector,  StatusOnServer.ShooterLocation, DeltaTime, ServerCorrectionSpeed);
-			CurrentCSPDelta = (GetActorLocation() - StatusOnServer.ShooterLocation).Size();
-			// const FRotator ToServerRotation = FMath::RInterpTo(CurrentRotation, CSPRotation.Rotator(), DeltaTime, ServerCorrectionSpeed);
+			const FRotator ToServerRotation = FMath::RInterpTo(CurrentRotation, CSPStatus.ShooterRotation, DeltaTime, ServerCorrectionSpeed);
+			CurrentCSPLocationDelta = (GetActorLocation() - CSPStatus.ShooterLocation).Size();
 			SetActorLocation(ToServerLocation);
-			// SetActorRotation(NewRotation);
+			SetActorRotation(ToServerRotation);
 			UnacknowledgedMoves.Empty();
 			bIsInterpolatingClientStatus = true;
 		}
 		else
 		{
 			const FVector CurrentVector = GetActorLocation();
-			const FVector ToServerLocation = FMath::VInterpTo(CurrentVector,  StatusOnServer.ShooterLocation, DeltaTime, IdleServerCorrectionSpeed);
-			CurrentCSPDelta = (GetActorLocation() - StatusOnServer.ShooterLocation).Size();
+			const FVector ToServerLocation = FMath::VInterpTo(CurrentVector,  CSPStatus.ShooterLocation, DeltaTime, IdleServerCorrectionSpeed);
+			CurrentCSPLocationDelta = (GetActorLocation() - CSPStatus.ShooterLocation).Size();
 			SetActorLocation(ToServerLocation);
 			bIsInterpolatingClientStatus = false;
 		}
@@ -866,22 +868,23 @@ void ABasePawnPlayer::MoveClientProxies(float DeltaTime)
 {
 	if(!IsLocallyControlled())
 	{
-		CurrentProxyDelta = (StatusOnServer.ShooterLocation - GetActorLocation()).Size();
-		if(CurrentProxyDelta > ProxyToTargetMin) //while the current location is far away, InterpTo
+		CurrentProxyLocationDelta = (StatusOnServer.ShooterLocation - GetActorLocation()).Size();
+		if(CurrentProxyLocationDelta > ProxyToTargetMin) //while the current location is far away, InterpTo
 		{
 			const FVector CurrentLocation = GetActorLocation();
 			const FVector NewLocation = StatusOnServer.ShooterLocation;
 			const FVector InterpLocation = FMath::VInterpTo(CurrentLocation, NewLocation, DeltaTime, ProxyCorrectionSpeed);
-			// const FRotator CurrentRotation = GetActorRotation();
+			const FRotator CurrentRotation = GetActorRotation();
 			const FRotator NewRotation = StatusOnServer.ShooterRotation;
-			// const FRotator InterpRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, ProxyCorrectionSpeed);
+			const FRotator InterpRotation = FMath::RInterpTo(CurrentRotation, NewRotation, DeltaTime, ProxyCorrectionSpeed);
 			SetActorLocation(InterpLocation);
-			// SetActorRotation(InterpRotation);
+			SetActorRotation(InterpRotation);
 		}
 		else//else keep the actor going its last velocity extrapolate 
 		{
 			AddActorWorldOffset(StatusOnServer.CurrentVelocity);
 			SpringArm->SetRelativeRotation(PitchLook_Internal(StatusOnServer.LastMove.PitchRotation, StatusOnServer.ShooterSpin, StatusOnServer.SpringArmPitch, StatusOnServer.SpringArmYaw, StatusOnServer.ShooterFloorStatus, FixedTimeStep));
+			AddActorLocalRotation(FRotator(StatusOnServer.LastPitchRotation, 0.f, 0.f));
 		}
 		// DrawDebugPoint(GetWorld(), StatusOnServer.ShooterLocation, 20.f, FColor::Blue);
 	}
@@ -904,8 +907,8 @@ void ABasePawnPlayer::DebugMode() const
 		if(GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1,0.f, FColor::Green, FString::Printf(TEXT("%s"), *GetName()));
-			const FColor CSPDeltaColor = CurrentCSPDelta > ServerClintDeltaTolerance ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, CSPDeltaColor, FString::Printf(TEXT("CurrentCSPDelta: %f"), CurrentCSPDelta));
+			const FColor CSPDeltaColor = CurrentCSPLocationDelta > ServerClintDeltaTolerance ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, CSPDeltaColor, FString::Printf(TEXT("CurrentCSPLocationDelta: %f"), CurrentCSPLocationDelta));
 			const FColor BoostCountColor = BoostCount == 0 ? FColor::Red : FColor::Green;
 			GEngine->AddOnScreenDebugMessage(-1,0.f, BoostCountColor, FString::Printf(TEXT("BoostCount: %i"), BoostCount));
 			const FColor MagnetizeColor = bIsMagnetized ? FColor::Green : FColor::Red;

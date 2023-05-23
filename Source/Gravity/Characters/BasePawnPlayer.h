@@ -71,6 +71,8 @@ struct FShooterStatus
 	UPROPERTY()
 	float SpringArmPitch;
 	UPROPERTY()
+	float LastPitchRotation = 0.f;
+	UPROPERTY()
 	float SpringArmYaw;
 	UPROPERTY()
 	bool bMagnetized;
@@ -204,7 +206,7 @@ private:
 	bool bIsInterpolatingClientStatus = false;
 	bool bIsExtrapolating = false;
 	
-	float CurrentCSPDelta = 0.f;
+	float CurrentCSPLocationDelta = 0.f;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ServerClintDeltaTolerance = 200.f;
 	UPROPERTY(EditAnywhere, Category=Network)
@@ -213,7 +215,7 @@ private:
 	float IdleServerCorrectionSpeed = 0.15f;
 
 	void MoveClientProxies(float DeltaTime);
-	float CurrentProxyDelta = FLT_MAX;
+	float CurrentProxyLocationDelta = FLT_MAX;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ProxyCorrectionSpeed = 4.f;
 	UPROPERTY(EditAnywhere, Category=Network)
@@ -293,6 +295,7 @@ private:
 	float SpringArmClientPitch;
 	
 	FRotator PitchLook_Internal(float ActionValueY, EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, float InSpringArmYaw, EShooterFloorStatus InFloorStatus, float DeltaTime);
+	UPROPERTY()
 	float SpringArmPitch;
 	float SpringArmYaw;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
@@ -301,9 +304,11 @@ private:
 	float SpringArmPitchMax = 70.f;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float SpringArmPitchMin = -75.f;
+	UPROPERTY()
 	EShooterSpin ShooterSpin = EShooterSpin::NoFlip;
 	
-	FRotator AddShooterSpin_Internal(float ActionValueY, float DeltaTime);
+	FRotator AddShooterSpin_Internal(float ActionValueY, EShooterFloorStatus InFloorStatus, EShooterSpin InShooterSpin, float& OutLastPitchRotation, float DeltaTime) const;
+	UPROPERTY()
 	float LastPitchRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirPitchSpeed = 2.f;
