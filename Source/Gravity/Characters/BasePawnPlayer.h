@@ -40,17 +40,21 @@ struct FShooterMove
 	UPROPERTY()
 	FVector_NetQuantize ShooterLocation = FVector::ZeroVector;
 	UPROPERTY()
-	FRotator ShooterRotation = FRotator::ZeroRotator;
-	UPROPERTY()
 	FVector_NetQuantize MovementVector = FVector::ZeroVector;
 	UPROPERTY()
-	int16 PitchRotation = 0;
+	FRotator ShooterRotationBeforeMovement;
 	UPROPERTY()
-	int16 YawRotation =  0;
+	FRotator ShooterRotationAfterMovement;
+	UPROPERTY()
+	float LastPitchRotation;
+	UPROPERTY()
+	float LastYawRotation;
+	UPROPERTY()
+	float SpringArmPitch;
 	UPROPERTY()
 	bool bJumped = false;
 	UPROPERTY()
-	bool bMagnetized = false;
+	bool bMagnetizedPressed = false;
 	UPROPERTY()
 	bool bBoost = false;
 	UPROPERTY()
@@ -71,11 +75,13 @@ struct FShooterStatus
 	UPROPERTY()
 	float SpringArmPitch;
 	UPROPERTY()
-	float LastPitchRotation = 0.f;
-	UPROPERTY()
 	float SpringArmYaw;
 	UPROPERTY()
-	bool bMagnetized;
+	float LastPitchRotation = 0.f;
+	UPROPERTY()
+	float LastYawRotation = 0.f;
+	UPROPERTY()
+	bool bMagnetized = false;
 	UPROPERTY()
 	int8 BoostCount;
 	UPROPERTY()
@@ -85,7 +91,15 @@ struct FShooterStatus
 	UPROPERTY()
 	EShooterFloorStatus ShooterFloorStatus;
 	UPROPERTY()
-	EShooterSpin ShooterSpin;
+	EShooterSpin ShooterSpin = EShooterSpin::NoFlip;
+	UPROPERTY()
+	float ClosestDistanceToFloor = FLT_MAX;
+	UPROPERTY()
+	AActor* ClosestFloor = nullptr;
+	UPROPERTY()
+	FHitResult FloorHitResult;
+	UPROPERTY()
+	FVector_NetQuantize CurrentGravity;
 };
 
 UCLASS()
@@ -215,18 +229,17 @@ private:
 	float IdleServerCorrectionSpeed = 0.15f;
 
 	void MoveClientProxies(float DeltaTime);
-	float CurrentProxyLocationDelta = FLT_MAX;
 	UPROPERTY(EditAnywhere, Category=Network)
 	float ProxyCorrectionSpeed = 4.f;
-	UPROPERTY(EditAnywhere, Category=Network)
-	float ProxyToTargetMin = 50.f;
 
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Unreliable)
 	void ServerSendMove(FShooterMove ClientMove);
+	bool bSetStatusAfterUpdate = false;
 	
 	TArray<FShooterMove> UnacknowledgedMoves;
 	UPROPERTY(ReplicatedUsing = OnRep_StatusOnServer)
 	FShooterStatus StatusOnServer;
+	FShooterStatus LocalStatus;
 	FShooterStatus CSPStatus;
 	
 	UFUNCTION()
@@ -287,14 +300,13 @@ private:
 
 	//everything involved with mouse look rotation
 	void LookActivated(const FInputActionValue& ActionValue);
-	
-	void BuildLook(FShooterMove& OutMove);
 	float PitchValue = 0.f;
 	float YawValue = 0.f;
+	
 	UPROPERTY(Replicated)
 	float SpringArmClientPitch;
 	
-	FRotator PitchLook_Internal(float ActionValueY, EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, float InSpringArmYaw, EShooterFloorStatus InFloorStatus, float DeltaTime);
+	FRotator PitchLook_Internal(EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, FShooterStatus InStatus, float DeltaTime) const;
 	UPROPERTY()
 	float SpringArmPitch;
 	float SpringArmYaw;
@@ -307,7 +319,7 @@ private:
 	UPROPERTY()
 	EShooterSpin ShooterSpin = EShooterSpin::NoFlip;
 	
-	FRotator AddShooterSpin_Internal(float ActionValueY, EShooterFloorStatus InFloorStatus, EShooterSpin InShooterSpin, float& OutLastPitchRotation, float DeltaTime) const;
+	FRotator AddShooterSpin_Internal(FShooterStatus InStatus, float DeltaTime);
 	UPROPERTY()
 	float LastPitchRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
@@ -315,7 +327,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float MaxPitchSpeed = 5.f;
 	
-	FRotator YawLook_Internal(float ActionValueX, float DeltaTime);
+	FRotator YawLook_Internal(FShooterStatus InStatus, float DeltaTime);
 	float LastYawRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationSpeed = 0.25f;
@@ -385,7 +397,7 @@ private:
 	void BuildMagnetized(FShooterMove& OutMove);
 	void MagnetizePressed(const FInputActionValue& ActionValue);
 	bool bMagnetizedPressed = false;
-	void Magnetize_Internal(bool bMagnetizedWasPressed);
+	void Magnetize_Internal(bool bMagnetizedFromMove, FShooterStatus& OutStatus);
 	UPROPERTY(Replicated)
 	bool bIsMagnetized = false;
 	/**
@@ -425,15 +437,15 @@ private:
 	UFUNCTION()
 	void PassDamageToHealth(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser);
 	
-	void ZeroOutGravity();
+	void ZeroOutGravity(FShooterStatus& StatusToReset);
 
 	
 	
 public:
 	FORCEINLINE EShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
-	void SetFloorStatus(EShooterFloorStatus InFloorStatus);
+	EShooterFloorStatus SetFloorStatus(EShooterFloorStatus InFloorStatus, FShooterStatus& StatusToReset);
 	float GetSpringArmPitch() const;
-	FORCEINLINE bool GetIsMagnetized() const {return bIsMagnetized;}
+	bool GetIsMagnetized() const;
 	FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
 	FVector GetHitTarget();
