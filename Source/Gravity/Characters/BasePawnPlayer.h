@@ -36,13 +36,9 @@ USTRUCT()
 struct FShooterMove
 {
 	GENERATED_BODY()
-
-	UPROPERTY()
-	FVector_NetQuantize ShooterLocation = FVector::ZeroVector;
+	
 	UPROPERTY()
 	FVector_NetQuantize MovementVector = FVector::ZeroVector;
-	UPROPERTY()
-	FRotator ShooterRotationBeforeMovement;
 	UPROPERTY()
 	FRotator ShooterRotationAfterMovement;
 	UPROPERTY()
@@ -85,7 +81,15 @@ struct FShooterStatus
 	UPROPERTY()
 	int8 BoostCount;
 	UPROPERTY()
-	FVector CurrentVelocity = FVector::ZeroVector;
+	FVector_NetQuantize CurrentVelocity = FVector::ZeroVector;
+	UPROPERTY()
+	FVector_NetQuantize CurrentJumpVelocity = FVector::ZeroVector;
+	UPROPERTY()
+	FVector_NetQuantize JumpForce;
+	UPROPERTY()
+	FVector_NetQuantize LastJumpPosition;
+	UPROPERTY()
+	FVector_NetQuantize SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY()
     FShooterMove LastMove;
 	UPROPERTY()
@@ -100,6 +104,10 @@ struct FShooterStatus
 	FHitResult FloorHitResult;
 	UPROPERTY()
 	FVector_NetQuantize CurrentGravity;
+	UPROPERTY()
+	bool bIsJumpingOffSphereLevel = false;
+	UPROPERTY()
+	FVector_NetQuantize SphereLocation;
 };
 
 UCLASS()
@@ -112,7 +120,6 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const override;
-	EShooterFloorStatus FloorStatus = EShooterFloorStatus::NoFloorContact;
 
 	void DebugMode() const;
 	UFUNCTION(Exec)
@@ -268,17 +275,15 @@ private:
 	void BuildMovement(FShooterMove& OutMove);
 	FVector MoveVector;
 	
-	FVector Movement_Internal(const FVector ActionValue, FVector ActorLocation, FRotator ActorRotation, FVector LastVelocity, float DeltaTime);
+	FVector Movement_Internal(const FVector ActionValue, FShooterStatus& OutStatus, float DeltaTime) const;
 	
-	FVector TotalMovementInput(const FVector ActionValue, FRotator ActorRotation, float DeltaTime) const;
+	FVector TotalMovementInput(const FVector ActionValue, FShooterStatus InStatus, float DeltaTime) const;
 	
-	FVector CalculateMovementVelocity(FVector InMovementInput, FVector ActorLocation, FRotator ActorRotation, FVector LastVelocity, float DeltaTime);
+	FVector CalculateMovementVelocity(FVector InMovementInput, FShooterStatus& OutStatus, float DeltaTime) const;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float SphereFloorMovementPercent = 0.025f;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float LevelSphereMovementPercent = 0.0075f;
-	FVector CurrentVelocity = FVector::ZeroVector;
-	FVector SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float GroundForwardSpeed = 1000.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -306,10 +311,7 @@ private:
 	UPROPERTY(Replicated)
 	float SpringArmClientPitch;
 	
-	FRotator PitchLook_Internal(EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, FShooterStatus InStatus, float DeltaTime) const;
-	UPROPERTY()
-	float SpringArmPitch;
-	float SpringArmYaw;
+	FRotator PitchLook_Internal(FShooterStatus& OutStatus, float DeltaTime) const;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float SpringArmPitchSpeed = 10.f;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
@@ -340,15 +342,9 @@ private:
 
 
 	//everything involved with gravity
-	FTransform PerformGravity(FTransform InActorTransform, float DeltaTime);
-	FVector SphereLocation = FVector::ZeroVector;
-	float ClosestDistanceToFloor = FLT_MAX;
-	UPROPERTY()
-	AActor* ClosestFloor = nullptr;
-	FHitResult FloorHitResult;
-	FVector CurrentGravity = FVector::ZeroVector;
+	FTransform PerformGravity(FShooterStatus& OutStatus, float DeltaTime) const;
 	
-	AActor* FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection);
+	void FindClosestFloor(FTransform ActorTransform, FShooterStatus& OutStatus) const;
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float SphereTraceRadius = 750.f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
@@ -356,11 +352,11 @@ private:
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float ImpactEdgeAdjustment = 5.f;
 	
-	FRotator OrientToGravity(FRotator InActorRotator, float DeltaTime);
+	FRotator OrientToGravity(FRotator InActorRotation, FShooterStatus InStatus, float DeltaTime) const;
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float SlerpSpeed = 1000.f;
 	
-	FVector GravityForce(FVector InActorLocation, float DeltaTime);
+	FVector GravityForce(FVector InActorLocation, FShooterStatus& OutStatus, float DeltaTime) const;
 	UPROPERTY(EditAnywhere, Category = Gravity)
 	float OutRangeGravityStrength = 0.3f;
 	UPROPERTY(EditAnywhere, Category = Gravity)
@@ -379,12 +375,7 @@ private:
 	void BuildJump(FShooterMove& OutMove);
 	bool bJumpPressed = false;
 	
-	FVector Jump_Internal(bool bJumpWasPressed, FTransform ActorTransform, float DeltaTime);
-	bool bIsJumpingOffSphereLevel = false;
-	
-	FVector CurrentJumpVelocity = FVector::ZeroVector;
-	FVector LastJumpPosition = FVector::ZeroVector;
-	FVector JumpForce = FVector::ZeroVector;
+	FVector Jump_Internal(bool bJumpWasPressed, FShooterStatus& OutStatus, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category=Movement)
 	float JumpVelocity = 10.f;
 	UPROPERTY(EditAnywhere, Category=Movement)
@@ -398,8 +389,6 @@ private:
 	void MagnetizePressed(const FInputActionValue& ActionValue);
 	bool bMagnetizedPressed = false;
 	void Magnetize_Internal(bool bMagnetizedFromMove, FShooterStatus& OutStatus);
-	UPROPERTY(Replicated)
-	bool bIsMagnetized = false;
 	/**
 	 * @end
 	 */
@@ -411,11 +400,11 @@ private:
 	FVector BoostDirection;
 	bool bBoostPressed = false;
 	
-	void Boost_Internal(FVector BoostVector, bool bBoostWasPressed, FTransform InActorTransform, float DeltaTime);
+	void Boost_Internal(FVector BoostVector, bool bBoostWasPressed, bool bIsPredictiveState, FShooterStatus& OutStatus);
 	UPROPERTY(EditAnywhere, Category=Boost)
 	float BoostLastVelocityReduction = 1.15f;
 	
-	void ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime);
+	void ContactedBoostForce(const FVector BoostVector, FShooterStatus& OutStatus) const;
 	UPROPERTY(EditAnywhere, Category=Boost)
 	float NonContactedBoostSpeed = 25.f;
 	UPROPERTY(EditAnywhere, Category=Boost)
@@ -426,9 +415,9 @@ private:
 	float BoostRechargeRate = 5.f;
 	UPROPERTY(EditAnywhere, Category = Boost)
 	int8 MaxBoosts = 2;
-	int8 BoostCount = MaxBoosts;
-	
-	void BoostRecharge();
+
+	void BoostRechargeConfirmed();
+	void BoostRechargePredictive();
 	FTimerHandle BoostRechargeTimerHandle;
 	/**
 	 * @end 
@@ -442,11 +431,11 @@ private:
 	
 	
 public:
-	FORCEINLINE EShooterFloorStatus GetFloorStatus() const {return FloorStatus;}
-	EShooterFloorStatus SetFloorStatus(EShooterFloorStatus InFloorStatus, FShooterStatus& StatusToReset);
+	FORCEINLINE EShooterFloorStatus GetFloorStatus() const {return LocalStatus.ShooterFloorStatus;}
+	EShooterFloorStatus SetFloorStatus(EShooterFloorStatus StatusToChangeTo, FShooterStatus& StatusToReset);
 	float GetSpringArmPitch() const;
 	bool GetIsMagnetized() const;
-	FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
+	// FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
 	FVector GetHitTarget();
 	FORCEINLINE UShooterCombatComponent* GetCombatComponent() const { return Combat; }

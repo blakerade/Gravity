@@ -106,22 +106,21 @@ void ABasePawnPlayer::BeginPlay()
 	{
 		LocalStatus.SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
 		LocalStatus.SpringArmYaw = SpringArm->GetRelativeRotation().Yaw;
+		LocalStatus.ShooterLocation = GetActorLocation();
 		LocalStatus.ShooterRotation = GetActorRotation();
-		LocalStatus.bMagnetized = false;
-		//TODO all this stuff
-		
+		LocalStatus.BoostCount = MaxBoosts;
 	}
 	else
 	{
-		StatusOnServer.ShooterLocation = GetActorLocation();
 		StatusOnServer.SpringArmPitch = SpringArm->GetRelativeRotation().Pitch;
 		StatusOnServer.SpringArmYaw = SpringArm->GetRelativeRotation().Yaw;
-		StatusOnServer.ShooterFloorStatus = EShooterFloorStatus::NoFloorContact;
-		StatusOnServer.ShooterSpin = EShooterSpin::NoFlip;
+		StatusOnServer.ShooterLocation = GetActorLocation();
+		StatusOnServer.ShooterRotation = GetActorRotation();
+		StatusOnServer.BoostCount = MaxBoosts;
 	}
 }
 
-void ABasePawnPlayer::Tick(float DeltaTime)
+void ABasePawnPlayer::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
@@ -154,7 +153,7 @@ void ABasePawnPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	}
 }
 
-void ABasePawnPlayer::ShooterMovement(float DeltaTime)
+void ABasePawnPlayer::ShooterMovement(const float DeltaTime)
 {
 	if(IsLocallyControlled())
 	{
@@ -167,26 +166,26 @@ void ABasePawnPlayer::ShooterMovement(float DeltaTime)
 			BuildJump(MoveToSend);
 			BuildMagnetized(MoveToSend);
 			BuildBoost(MoveToSend);
-			MoveToSend.ShooterLocation = GetActorLocation();
-			MoveToSend.ShooterRotationBeforeMovement = GetActorRotation();
 			if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
 			
-			LocalStatus.CurrentVelocity += Movement_Internal(MoveToSend.MovementVector, GetActorLocation(), GetActorRotation(), LocalStatus.CurrentVelocity, DeltaTime);
-			AddActorWorldOffset(LocalStatus.CurrentVelocity);
+			LocalStatus.CurrentVelocity += Movement_Internal(MoveToSend.MovementVector, LocalStatus, DeltaTime);
 			Magnetize_Internal(MoveToSend.bMagnetizedPressed, LocalStatus);
 			
-			AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped,GetActorTransform(), DeltaTime));
-			
-			Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, GetActorTransform(), DeltaTime);
-			SetActorTransform(PerformGravity(GetActorTransform(), DeltaTime));
+			AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, LocalStatus, DeltaTime));
+			Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, false, LocalStatus);
+			SetActorTransform(PerformGravity(LocalStatus, DeltaTime));
 		}
-		SpringArm->SetRelativeRotation(PitchLook_Internal(LocalStatus.ShooterSpin, LocalStatus.SpringArmPitch,LocalStatus, DeltaTime));
+		SpringArm->SetRelativeRotation(PitchLook_Internal(LocalStatus, DeltaTime));
 		AddActorLocalRotation(AddShooterSpin_Internal(LocalStatus, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(LocalStatus, DeltaTime));
+		AddActorWorldOffset(LocalStatus.CurrentVelocity);
+		LocalStatus.ShooterLocation = GetActorLocation();
+		LocalStatus.ShooterRotation = GetActorRotation();
 		MoveToSend.LastPitchRotation = LocalStatus.LastPitchRotation;
 		MoveToSend.LastYawRotation = LocalStatus.LastYawRotation;
-		MoveToSend.ShooterRotationAfterMovement = GetActorRotation();
+		MoveToSend.ShooterRotationAfterMovement = LocalStatus.ShooterRotation;
 		MoveToSend.SpringArmPitch = LocalStatus.SpringArmPitch;
+
 		
 		if(!HasAuthority() && !bIsInterpolatingClientStatus)
 		{
@@ -211,19 +210,19 @@ void ABasePawnPlayer::BuildMovement(FShooterMove& OutMove)
 	MoveVector = FVector::ZeroVector;
 }
 
-FVector ABasePawnPlayer::Movement_Internal(const FVector ActionValue, FVector ActorLocation , FRotator ActorRotation, FVector LastVelocity, float DeltaTime)
+FVector ABasePawnPlayer::Movement_Internal(const FVector ActionValue, FShooterStatus& OutStatus, const float DeltaTime) const
 {
-	const FVector InputMovementVector = TotalMovementInput(ActionValue, ActorRotation, DeltaTime);
-	return CalculateMovementVelocity(InputMovementVector, ActorLocation,  ActorRotation, LastVelocity, DeltaTime);
+	const FVector InputMovementVector = TotalMovementInput(ActionValue, OutStatus, DeltaTime);
+	return CalculateMovementVelocity(InputMovementVector,OutStatus, DeltaTime);
 }
 
-FVector ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, FRotator ActorRotation, float DeltaTime) const
+FVector ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, const FShooterStatus InStatus, const float DeltaTime) const
 {
-	const FVector ForwardVector = ActorRotation.Quaternion().GetAxisX();
-	const FVector RightVector = ActorRotation.Quaternion().GetAxisY();
-	const FVector UpVector = ActorRotation.Quaternion().GetAxisZ();
+	const FVector ForwardVector = InStatus.ShooterRotation.Quaternion().GetAxisX();
+	const FVector RightVector = InStatus.ShooterRotation.Quaternion().GetAxisY();
+	const FVector UpVector = InStatus.ShooterRotation.Quaternion().GetAxisZ();
 
-	if(FloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
+	if(InStatus.ShooterFloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
 	{
 		
 		if(ActionValue.X > 0.f && ActionValue.Y == 0.f)
@@ -255,48 +254,48 @@ FVector ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, FRotator 
 	return FVector::ZeroVector;
 }
 
-FVector ABasePawnPlayer::CalculateMovementVelocity(FVector InMovementInput, FVector ActorLocation, FRotator ActorRotation, FVector LastVelocity, float DeltaTime)
+FVector ABasePawnPlayer::CalculateMovementVelocity(const FVector InMovementInput, FShooterStatus& OutStatus, const float DeltaTime) const
 {
-	if(FloorStatus == EShooterFloorStatus::BaseFloorContact && bIsMagnetized) //if walking on a flat floor and magnetized
+	if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::BaseFloorContact && OutStatus.bMagnetized) //if walking on a flat floor and magnetized
 	{
 		if(InMovementInput.Size() == 0.f)
 		{
-			return FMath::VInterpTo(LastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
+			return FMath::VInterpTo(OutStatus.CurrentVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
 		}
-		return  FMath::VInterpTo(LastVelocity, InMovementInput, DeltaTime, AccelerationSpeed);
+		return  FMath::VInterpTo(OutStatus.CurrentVelocity, InMovementInput, DeltaTime, AccelerationSpeed);
 	}
-	if(FloorStatus == EShooterFloorStatus::SphereFloorContact && bIsMagnetized) //if walking on a sphere and magnetized
+	if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereFloorContact && OutStatus.bMagnetized) //if walking on a sphere and magnetized
 	{
 		if(InMovementInput.Size() == 0.f)
 		{
-			SphereLastVelocity = FMath::VInterpTo(SphereLastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
-			const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(SphereLastVelocity, ActorRotation.Quaternion().GetAxisZ());
-			const FVector SphereToActor = ActorLocation - SphereLocation;
-			const FVector NewPosition = SphereToActor.RotateAngleAxis(SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
+			OutStatus.SphereLastVelocity = FMath::VInterpTo(OutStatus.SphereLastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
+			const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(OutStatus.SphereLastVelocity, OutStatus.ShooterRotation.Quaternion().GetAxisZ());
+			const FVector SphereToActor = OutStatus.ShooterLocation - OutStatus.SphereLocation;
+			const FVector NewPosition = SphereToActor.RotateAngleAxis(OutStatus.SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
 			return NewPosition - SphereToActor;
 		}
 		const FVector AdjustedControlInputVector = InMovementInput * SphereFloorMovementPercent;
-		SphereLastVelocity = FMath::VInterpTo(SphereLastVelocity, AdjustedControlInputVector, DeltaTime, AccelerationSpeed);
-		const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(SphereLastVelocity, ActorRotation.Quaternion().GetAxisZ());
-		const FVector SphereToActor = ActorLocation - SphereLocation;
-		const FVector NewPosition = SphereToActor.RotateAngleAxis(SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
+		OutStatus.SphereLastVelocity = FMath::VInterpTo(OutStatus.SphereLastVelocity, AdjustedControlInputVector, DeltaTime, AccelerationSpeed);
+		const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(OutStatus.SphereLastVelocity, OutStatus.ShooterRotation.Quaternion().GetAxisZ());
+		const FVector SphereToActor = OutStatus.ShooterLocation - OutStatus.SphereLocation;
+		const FVector NewPosition = SphereToActor.RotateAngleAxis(OutStatus.SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
 		return NewPosition - SphereToActor;
 	}
-	if(FloorStatus == EShooterFloorStatus::SphereLevelContact && bIsMagnetized) //if walking in a sphere and magnetized OR jumping on level sphere
+	if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereLevelContact && OutStatus.bMagnetized) //if walking in a sphere and magnetized OR jumping on level sphere
 	{
 		if(InMovementInput.Size() == 0.f)
 		{
-			SphereLastVelocity = FMath::VInterpTo(SphereLastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
-			const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(SphereLastVelocity, ActorRotation.Quaternion().GetAxisZ());
-			const FVector SphereToActor = ActorLocation - SphereLocation;
-			const FVector NewPosition = SphereToActor.RotateAngleAxis(SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
+			OutStatus.SphereLastVelocity = FMath::VInterpTo(OutStatus.SphereLastVelocity, FVector::ZeroVector, DeltaTime, StoppingSpeed);
+			const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(OutStatus.SphereLastVelocity, OutStatus.ShooterRotation.Quaternion().GetAxisZ());
+			const FVector SphereToActor = OutStatus.ShooterLocation - OutStatus.SphereLocation;
+			const FVector NewPosition = SphereToActor.RotateAngleAxis(OutStatus.SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
 			return NewPosition - SphereToActor;
 		}
 		const FVector AdjustedControlInputVector = -InMovementInput * LevelSphereMovementPercent;
-		SphereLastVelocity = FMath::VInterpTo(SphereLastVelocity, AdjustedControlInputVector, DeltaTime, AccelerationSpeed);
-		const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(SphereLastVelocity, ActorRotation.Quaternion().GetAxisZ());
-		const FVector SphereToActor = ActorLocation - SphereLocation;
-		const FVector NewPosition = SphereToActor.RotateAngleAxis(SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
+		OutStatus.SphereLastVelocity = FMath::VInterpTo(OutStatus.SphereLastVelocity, AdjustedControlInputVector, DeltaTime, AccelerationSpeed);
+		const FMatrix InputRotation = FRotationMatrix::MakeFromXZ(OutStatus.SphereLastVelocity, OutStatus.ShooterRotation.Quaternion().GetAxisZ());
+		const FVector SphereToActor = OutStatus.ShooterLocation - OutStatus.SphereLocation;
+		const FVector NewPosition = SphereToActor.RotateAngleAxis(OutStatus.SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
 		return NewPosition - SphereToActor;
 	}
 	return InMovementInput * AirSpeed;
@@ -308,22 +307,22 @@ void ABasePawnPlayer::LookActivated(const FInputActionValue& ActionValue)
 	YawValue = ActionValue.Get<FVector2D>().X;
 }
 
-FRotator ABasePawnPlayer::PitchLook_Internal(EShooterSpin& OutShooterSpin, float& OutSpringArmPitch, FShooterStatus InStatus, float DeltaTime) const
+FRotator ABasePawnPlayer::PitchLook_Internal(FShooterStatus& OutStatus, float DeltaTime) const
 {
-	OutSpringArmPitch = FMath::Clamp(OutSpringArmPitch + (PitchValue * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
-	if(OutSpringArmPitch > (SpringArmPitchMax - 1.5f) && InStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
+	OutStatus.SpringArmPitch = FMath::Clamp(OutStatus.SpringArmPitch + (PitchValue * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
+	if(OutStatus.SpringArmPitch > (SpringArmPitchMax - 1.5f) && OutStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		OutShooterSpin = EShooterSpin::BackFlip;
+		OutStatus.ShooterSpin = EShooterSpin::BackFlip;
 	}
-	else if(OutSpringArmPitch < (SpringArmPitchMin + 1.5f) && InStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
+	else if(OutStatus.SpringArmPitch < (SpringArmPitchMin + 1.5f) && OutStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		OutShooterSpin = EShooterSpin::FrontFlip;
+		OutStatus.ShooterSpin = EShooterSpin::FrontFlip;
 	}
 	else
 	{
-		OutShooterSpin = EShooterSpin::NoFlip;
+		OutStatus.ShooterSpin = EShooterSpin::NoFlip;
 	}
-	return FRotator(OutSpringArmPitch, InStatus.SpringArmYaw, 0.f);
+	return FRotator(OutStatus.SpringArmPitch, OutStatus.SpringArmYaw, 0.f);
 }
 
 FRotator ABasePawnPlayer::AddShooterSpin_Internal(FShooterStatus InStatus, float DeltaTime)
@@ -387,32 +386,32 @@ void ABasePawnPlayer::BuildJump(FShooterMove& OutMove)
 	}
 }
 
-FVector ABasePawnPlayer::Jump_Internal(bool bJumpWasPressed, FTransform ActorTransform, float DeltaTime)
+FVector ABasePawnPlayer::Jump_Internal(const bool bJumpWasPressed, FShooterStatus& OutStatus, const float DeltaTime)
 {
-	if(!FMath::IsNearlyZero(JumpForce.Size()) && bIsMagnetized)
+	if(!FMath::IsNearlyZero(OutStatus.JumpForce.Size()) && OutStatus.bMagnetized)
 	{
-		JumpForce = FMath::VInterpTo(JumpForce, FVector::ZeroVector, DeltaTime, JumpDeceleration);
-		CurrentJumpVelocity = ActorTransform.GetLocation() - LastJumpPosition;
-		LastJumpPosition = ActorTransform.GetLocation();
-		return JumpForce;
+		OutStatus.JumpForce = FMath::VInterpTo(OutStatus.JumpForce, FVector::ZeroVector, DeltaTime, JumpDeceleration);
+		OutStatus.CurrentJumpVelocity = OutStatus.ShooterLocation - OutStatus.LastJumpPosition;
+		OutStatus.LastJumpPosition = OutStatus.ShooterLocation;
+		return OutStatus.JumpForce;
 
 	}
 	if(bJumpWasPressed)
 	{
-		if(FloorStatus != EShooterFloorStatus::NoFloorContact && bIsMagnetized) //if we are in contact with a floor
+		if(OutStatus.ShooterFloorStatus != EShooterFloorStatus::NoFloorContact && OutStatus.bMagnetized) //if we are in contact with a floor
 		{
-			if(FloorStatus == EShooterFloorStatus::SphereLevelContact)
+			if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereLevelContact)
 			{
-				bIsJumpingOffSphereLevel = true;
+				OutStatus.bIsJumpingOffSphereLevel = true;
 			}
-			// SetFloorStatus(EShooterFloorStatus::NoFloorContact); TODO
-			JumpForce = ActorTransform.GetUnitAxis(EAxis::Z) * JumpVelocity;
-			// JumpForce += LastVelocity; TODO
-			LastJumpPosition = ActorTransform.GetLocation();
-			return JumpForce;
+			OutStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::NoFloorContact, OutStatus);
+			OutStatus.JumpForce = OutStatus.ShooterRotation.Quaternion().GetAxisZ() * JumpVelocity;
+			OutStatus.JumpForce += OutStatus.CurrentVelocity;
+			OutStatus.LastJumpPosition = OutStatus.ShooterLocation;
+			return OutStatus.JumpForce;
 		}
 	}
-	return JumpForce = FVector::ZeroVector;
+	return OutStatus.JumpForce = FVector::ZeroVector;
 }
 
 void ABasePawnPlayer::Crouch(const FInputActionValue& ActionValue)
@@ -446,16 +445,16 @@ void ABasePawnPlayer::Magnetize_Internal(bool bMagnetizedFromMove, FShooterStatu
 	if(!OutStatus.bMagnetized)
 	{
 		OutStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::NoFloorContact, OutStatus);
-		// if(CurrentJumpVelocity.Size() > 0) TODO fix jumping
-		// {
-		// 	// LastVelocity = CurrentJumpVelocity; TODO
-		// 	if(bIsJumpingOffSphereLevel)
-		// 	{
-		// 		SphereLastVelocity = CurrentJumpVelocity;
-		// 		bIsJumpingOffSphereLevel = false;
-		// 	}
-		// 	CurrentJumpVelocity = FVector::ZeroVector;
-		// }
+		if(OutStatus.CurrentJumpVelocity.Size() > 0)
+		{
+			OutStatus.CurrentVelocity = OutStatus.CurrentJumpVelocity;
+			if(OutStatus.bIsJumpingOffSphereLevel)
+			{
+				OutStatus.SphereLastVelocity = OutStatus.CurrentJumpVelocity;
+				OutStatus.bIsJumpingOffSphereLevel = false;
+			}
+			OutStatus.CurrentJumpVelocity = FVector::ZeroVector;
+		}
 	}
 }
 
@@ -476,113 +475,146 @@ void ABasePawnPlayer::BuildBoost(FShooterMove& OutMove)
 	}
 }
 
-void ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPressed, FTransform InActorTransform, float DeltaTime)
+void ABasePawnPlayer::Boost_Internal(FVector BoostVector, bool bBoostWasPressed, bool bIsPredictiveState, FShooterStatus& OutStatus)
 {
 	if(bBoostWasPressed)
 	{
-		if(BoostCount > 0)
+		if(OutStatus.BoostCount > 0)
 		{
-			BoostCount --;
-			if(FloorStatus == EShooterFloorStatus::NoFloorContact)
+			FTransform InActorTransform;
+			InActorTransform.SetLocation(OutStatus.ShooterLocation);
+			InActorTransform.SetRotation(OutStatus.ShooterRotation.Quaternion());
+			OutStatus.BoostCount --;
+			if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
 			{
 				const FVector WorldBoostVector = InActorTransform.TransformVectorNoScale(BoostVector);
-				// LastVelocity = WorldBoostVector * NonContactedBoostSpeed + LastVelocity /= BoostLastVelocityReduction; TODO
-				GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRecharge, BoostRechargeRate);
+				OutStatus.CurrentVelocity = WorldBoostVector * NonContactedBoostSpeed + OutStatus.CurrentVelocity /= BoostLastVelocityReduction;
+				if(bIsPredictiveState)
+				{
+					GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRechargePredictive, BoostRechargeRate);
+				}
+				else
+				{
+					GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRechargeConfirmed, BoostRechargeRate);
+				}
 			}
 			else
 			{
-				ContactedBoostForce(BoostVector, InActorTransform, DeltaTime);
-				GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRecharge, BoostRechargeRate);
+				ContactedBoostForce(BoostVector, OutStatus);
+				if(bIsPredictiveState)
+				{
+					GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRechargePredictive, BoostRechargeRate);
+				}
+				else
+				{
+					GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRechargeConfirmed, BoostRechargeRate);
+				}
 			}
 		}
 	}
 }
 
-void ABasePawnPlayer::ContactedBoostForce(const FVector BoostVector, FTransform InActorTransform, float DeltaTime)
+void ABasePawnPlayer::ContactedBoostForce(const FVector BoostVector, FShooterStatus& OutStatus) const
 {
+	FTransform InActorTransform;
+	InActorTransform.SetLocation(OutStatus.ShooterLocation);
+	InActorTransform.SetRotation(OutStatus.ShooterRotation.Quaternion());
 	const FVector WorldBoostVector = ContactedBoostSpeed * InActorTransform.TransformVectorNoScale(BoostVector);
-	if(FloorStatus == EShooterFloorStatus::BaseFloorContact)
+	if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::BaseFloorContact)
 	{
-		// LastVelocity = WorldBoostVector; TODO
+		OutStatus.CurrentVelocity = WorldBoostVector;
 	}
-	if(FloorStatus == EShooterFloorStatus::SphereFloorContact)
+	if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereFloorContact)
 	{
-		SphereLastVelocity = WorldBoostVector * SphereFloorMovementPercent;
+		OutStatus.SphereLastVelocity = WorldBoostVector * SphereFloorMovementPercent;
 	}
-	if(FloorStatus == EShooterFloorStatus::SphereLevelContact)
+	if(OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereLevelContact)
 	{
-		SphereLastVelocity = -WorldBoostVector * LevelSphereMovementPercent;
-	}
-}
-
-void ABasePawnPlayer::BoostRecharge()
-{
-	BoostCount++;
-	if(BoostCount < MaxBoosts)
-	{
-		GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRecharge, BoostRechargeRate);
+		OutStatus.SphereLastVelocity = -WorldBoostVector * LevelSphereMovementPercent;
 	}
 }
 
-FTransform ABasePawnPlayer::PerformGravity(FTransform InActorTransform, float DeltaTime)
+void ABasePawnPlayer::BoostRechargeConfirmed()
 {
-	FTransform NewActorTransform = InActorTransform;
-	if(bIsMagnetized && FloorStatus == EShooterFloorStatus::NoFloorContact)
+	LocalStatus.BoostCount++;
+	if(LocalStatus.BoostCount < MaxBoosts)
 	{
-		if(bIsJumpingOffSphereLevel)
+		GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRechargeConfirmed, BoostRechargeRate);
+	}
+}
+
+void ABasePawnPlayer::BoostRechargePredictive()
+{
+	CSPStatus.BoostCount++;
+	if(CSPStatus.BoostCount < MaxBoosts)
+	{
+		GetWorldTimerManager().SetTimer(BoostRechargeTimerHandle, this, &ABasePawnPlayer::BoostRechargePredictive, BoostRechargeRate);
+	}
+}
+
+FTransform ABasePawnPlayer::PerformGravity(FShooterStatus& OutStatus, const float DeltaTime) const
+{
+	FTransform NewActorTransform;
+	NewActorTransform.SetLocation(OutStatus.ShooterLocation);
+	NewActorTransform.SetRotation(OutStatus.ShooterRotation.Quaternion());
+	if(OutStatus.bMagnetized && OutStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("IN"));
+		if(OutStatus.bIsJumpingOffSphereLevel)
 		{
-			ClosestFloor = FindClosestFloor(NewActorTransform, CurrentGravity);
-			if(ClosestFloor != nullptr)
+			FindClosestFloor(NewActorTransform, OutStatus);
+			if(OutStatus.ClosestFloor != nullptr)
 			{
-				SphereLocation = ClosestFloor->GetActorLocation();
-				CurrentGravity = NewActorTransform.GetLocation() - SphereLocation;
-				NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), DeltaTime).Quaternion());
-				LastPitchRotation = 0.f;
-				NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), DeltaTime));
+				OutStatus.SphereLocation = OutStatus.ClosestFloor->GetActorLocation();
+				OutStatus.CurrentGravity = NewActorTransform.GetLocation() - OutStatus.SphereLocation;
+				NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), OutStatus, DeltaTime).Quaternion());
+				OutStatus.LastPitchRotation = 0.f;
+				NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), OutStatus, DeltaTime));
 			}
 		}
 		else
 		{
-			ClosestFloor = FindClosestFloor(NewActorTransform, CurrentGravity);
-			if(ClosestFloor != nullptr)
+			FindClosestFloor(NewActorTransform, OutStatus);
+			if(OutStatus.ClosestFloor != nullptr)
 			{
-				NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), DeltaTime).Quaternion());
-				LastPitchRotation = 0.f;
-				NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), DeltaTime));
+				NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), OutStatus, DeltaTime).Quaternion());
+				OutStatus.LastPitchRotation = 0.f;
+				NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), OutStatus, DeltaTime));
 			}
 		}
 		return NewActorTransform;
 	}
-	if(bIsMagnetized && FloorStatus == EShooterFloorStatus::SphereFloorContact)
+	if(OutStatus.bMagnetized && OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereFloorContact)
 	{
-		if(ClosestFloor != nullptr)
+		if(OutStatus.ClosestFloor != nullptr)
 		{
-			SphereLocation = ClosestFloor->GetActorLocation();
+			OutStatus.SphereLocation = OutStatus.ClosestFloor->GetActorLocation();
 		}
-		CurrentGravity = SphereLocation - NewActorTransform.GetLocation();
-		NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), DeltaTime).Quaternion());
-		LastPitchRotation = 0.f;
+		OutStatus.CurrentGravity = OutStatus.SphereLocation - NewActorTransform.GetLocation();
+		NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), OutStatus, DeltaTime).Quaternion());
+		OutStatus.LastPitchRotation = 0.f;
 		return NewActorTransform;
 	}
-	if(bIsMagnetized && FloorStatus == EShooterFloorStatus::SphereLevelContact)
+	if(OutStatus.bMagnetized && OutStatus.ShooterFloorStatus == EShooterFloorStatus::SphereLevelContact)
 	{
-		if(ClosestFloor != nullptr)
+		if(OutStatus.ClosestFloor != nullptr)
 		{
-			SphereLocation = ClosestFloor->GetActorLocation();
+			OutStatus.SphereLocation = OutStatus.ClosestFloor->GetActorLocation();
 		}
-		if(bIsJumpingOffSphereLevel)
+		if(OutStatus.bIsJumpingOffSphereLevel)
 		{
-			NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), DeltaTime));
+			NewActorTransform.SetLocation(GravityForce(NewActorTransform.GetLocation(), OutStatus, DeltaTime));
 		}
-		CurrentGravity = NewActorTransform.GetLocation() - SphereLocation;
-		NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), DeltaTime).Quaternion());
-		LastPitchRotation = 0.f;
+		OutStatus.CurrentGravity = NewActorTransform.GetLocation() - OutStatus.SphereLocation;
+		NewActorTransform.SetRotation(OrientToGravity(NewActorTransform.Rotator(), OutStatus, DeltaTime).Quaternion());
+		OutStatus.LastPitchRotation = 0.f;
 		return NewActorTransform;
 	}
-	return InActorTransform;
+	UE_LOG(LogTemp, Warning, TEXT("OUT"));
+	return NewActorTransform;
 }
 
-AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& OutGravityDirection)
+void ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FShooterStatus& OutStatus) const
 {
 	//although feet makes more sense for magnetized boots, head position plays more predictably
 	TArray<AActor*> OutActors;
@@ -604,24 +636,23 @@ AActor* ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FVector& Ou
 		{
 			if(World && Floor.GetActor())
 			{
-				World->SweepSingleByChannel(FloorHitResult, ActorTransform.GetLocation(), Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
-				if(FloorHitResult.bBlockingHit && (FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size() < ClosestDistanceToFloor)
+				World->SweepSingleByChannel(OutStatus.FloorHitResult, ActorTransform.GetLocation(), Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
+				if(OutStatus.FloorHitResult.bBlockingHit && (OutStatus.FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size() < OutStatus.ClosestDistanceToFloor)
 				{
 					if(bIsInDebugMode)
 					{
-						DrawDebugPoint(World, FloorHitResult.ImpactPoint, 50.f, FColor::Red);
+						DrawDebugPoint(World, OutStatus.FloorHitResult.ImpactPoint, 50.f, FColor::Red);
 					}
-					ClosestDistanceToFloor = (FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size();
-					ClosestFloor = Floor.GetActor();
-					OutGravityDirection = FloorHitResult.ImpactPoint - ActorTransform.GetLocation();
+					OutStatus.ClosestDistanceToFloor = (OutStatus.FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size();
+					OutStatus.ClosestFloor = Floor.GetActor();
+					OutStatus.CurrentGravity = OutStatus.FloorHitResult.ImpactPoint - ActorTransform.GetLocation();
 				}
 			}
 		}
 	}
-	return ClosestFloor;
 }
 
-FRotator ABasePawnPlayer::OrientToGravity(FRotator InActorRotator, float DeltaTime)
+FRotator ABasePawnPlayer::OrientToGravity(const FRotator InActorRotation, const FShooterStatus InStatus, const float DeltaTime) const
 {
 	FMatrix FeetToGravity;
 	//If we are going the same way as gravity, use MakeFromXY to reduce amount of unnecessary pivoting, could probably use even more improvement
@@ -633,94 +664,94 @@ FRotator ABasePawnPlayer::OrientToGravity(FRotator InActorRotator, float DeltaTi
 	// 	return NewRotation.Rotator();
 	// }
 	//If gravity is any other direction then this MakeFromZX should give us the smoothest rotation
-	FeetToGravity = FRotationMatrix::MakeFromZX(-CurrentGravity, GetActorForwardVector());
+	FeetToGravity = FRotationMatrix::MakeFromZX(-InStatus.CurrentGravity, InActorRotation.Quaternion().GetAxisX());
 	FQuat NewRotation;
-	if(FloorStatus == EShooterFloorStatus::SphereFloorContact || FloorStatus == EShooterFloorStatus::SphereLevelContact)
+	if(InStatus.ShooterFloorStatus == EShooterFloorStatus::SphereFloorContact || InStatus.ShooterFloorStatus == EShooterFloorStatus::SphereLevelContact)
 	{
-		NewRotation = FQuat::Slerp(InActorRotator.Quaternion(),FeetToGravity.ToQuat(), 1.f);
+		NewRotation = FQuat::Slerp(InActorRotation.Quaternion(),FeetToGravity.ToQuat(), 1.f);
 	}
 	else
 	{
-		NewRotation = FQuat::Slerp(InActorRotator.Quaternion(),FeetToGravity.ToQuat(), DeltaTime * (SlerpSpeed/ClosestDistanceToFloor));
+		NewRotation = FQuat::Slerp(InActorRotation.Quaternion(),FeetToGravity.ToQuat(), DeltaTime * (SlerpSpeed/InStatus.ClosestDistanceToFloor));
 	}
 	return NewRotation.Rotator();
 }
 
-FVector ABasePawnPlayer::GravityForce(FVector InActorLocation, float DeltaTime)
+FVector ABasePawnPlayer::GravityForce(const FVector InActorLocation, FShooterStatus& OutStatus, const float DeltaTime) const
 {
-	ClosestDistanceToFloor = FloorHitResult.Distance + SphereTraceRadius;
-	const float DistancePct = FMath::Abs(150 - 100 * (ClosestDistanceToFloor/GravityDistanceRadius));
+	OutStatus.ClosestDistanceToFloor = OutStatus.FloorHitResult.Distance + SphereTraceRadius;
+	const float DistancePct = FMath::Abs(150 - 100 * (OutStatus.ClosestDistanceToFloor/GravityDistanceRadius));
 	FVector NewVector;
-	if(FloorHitResult.bBlockingHit && DistancePct == 100.f)
+	if(OutStatus.FloorHitResult.bBlockingHit && DistancePct == 100.f)
 	{
-		NewVector = FMath::VInterpConstantTo(InActorLocation, FVector(FloorHitResult.ImpactPoint), DeltaTime, InRangeGravityStrength);
+		NewVector = FMath::VInterpConstantTo(InActorLocation, FVector(OutStatus.FloorHitResult.ImpactPoint), DeltaTime, InRangeGravityStrength);
 	}
-	else if(FloorHitResult.bBlockingHit)
+	else if(OutStatus.FloorHitResult.bBlockingHit)
 	{
-		NewVector = FMath::VInterpConstantTo(InActorLocation, FVector(FloorHitResult.ImpactPoint), DeltaTime, FMath::Pow(OutRangeGravityStrength * DistancePct, GravityForceCurve));
+		NewVector = FMath::VInterpConstantTo(InActorLocation, FVector(OutStatus.FloorHitResult.ImpactPoint), DeltaTime, FMath::Pow(OutRangeGravityStrength * DistancePct, GravityForceCurve));
 	}
-	// LastVelocity = FMath::VInterpTo(LastVelocity, FVector::ZeroVector, DeltaTime, GravityVelocityReduction); TODO
-	SphereLastVelocity = FVector::ZeroVector;
+	OutStatus.CurrentVelocity = FMath::VInterpTo(OutStatus.CurrentVelocity, FVector::ZeroVector, DeltaTime, GravityVelocityReduction);
+	OutStatus.SphereLastVelocity = FVector::ZeroVector;
 	return NewVector;
 }
 
 void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if(FloorStatus == EShooterFloorStatus::NoFloorContact && bIsMagnetized)
+	if(LocalStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact && LocalStatus.bMagnetized)
 	{
 		if(FVector::DotProduct(GetActorUpVector(), Hit.ImpactNormal) > 0.7f)
 		{
 			if(const ASphereFloorBase* SphereFloor = Cast<ASphereFloorBase>(OtherActor))
 			{
-				// SetFloorStatus(EShooterFloorStatus::SphereFloorContact); TODO
-				ShooterSpin = EShooterSpin::NoFlip;
-				LastPitchRotation = 0.f;
-				LastYawRotation = 0.f;
-				// LastVelocity = FVector::ZeroVector; TODO
-				SphereLastVelocity = FVector::ZeroVector;
+				LocalStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::SphereFloorContact, LocalStatus);
+				LocalStatus.ShooterSpin = EShooterSpin::NoFlip;
+				LocalStatus.LastPitchRotation = 0.f;
+				LocalStatus.LastYawRotation = 0.f;
+				LocalStatus.CurrentVelocity = FVector::ZeroVector;
+				LocalStatus.SphereLastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
 			}
 			else if(const AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
 			{
-				// SetFloorStatus(EShooterFloorStatus::SphereLevelContact); TODO
-				ShooterSpin = EShooterSpin::NoFlip;
-				LastPitchRotation = 0.f;
-				LastYawRotation = 0.f;
-				// LastVelocity = FVector::ZeroVector; TODO
-				SphereLastVelocity = FVector::ZeroVector;
+				LocalStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::SphereLevelContact, LocalStatus);
+				LocalStatus.ShooterSpin = EShooterSpin::NoFlip;
+				LocalStatus.LastPitchRotation = 0.f;
+				LocalStatus.LastYawRotation = 0.f;
+				LocalStatus.CurrentVelocity = FVector::ZeroVector;
+				LocalStatus.SphereLastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
 			}
 			else if(const AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 			{
 				const float DotProductResult = FVector::DotProduct(Floor->GetActorUpVector(), Hit.ImpactNormal);
-				constexpr  float Epsilon = 0.001f;
+				constexpr float Epsilon = 0.001f;
 				if(FMath::IsNearlyEqual(DotProductResult, 1.f, Epsilon) || FMath::IsNearlyEqual(DotProductResult, -1.f, Epsilon))
 				{
-					// SetFloorStatus(EShooterFloorStatus::BaseFloorContact); TODO
-					ShooterSpin = EShooterSpin::NoFlip;
-					LastPitchRotation = 0.f;
-					LastYawRotation = 0.f;
-					// LastVelocity = FVector::ZeroVector; TODO
-					SphereLastVelocity = FVector::ZeroVector;
+					LocalStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::BaseFloorContact, LocalStatus);
+					LocalStatus.ShooterSpin = EShooterSpin::NoFlip;
+					LocalStatus.LastPitchRotation = 0.f;
+					LocalStatus.LastYawRotation = 0.f;
+					LocalStatus.CurrentVelocity = FVector::ZeroVector;
+					LocalStatus.SphereLastVelocity = FVector::ZeroVector;
 					SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
 				}
 				else
 				{
 					MagnetizePressed(1.f);
-					// SetFloorStatus(EShooterFloorStatus::NoFloorContact); TODO
-					// LastVelocity += Hit.ImpactNormal * (LastVelocity.Size()/2.f); TODO
+					LocalStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::NoFloorContact, LocalStatus);
+					LocalStatus.CurrentVelocity += Hit.ImpactNormal * (LocalStatus.CurrentVelocity.Size()/2.f);
 				}
 			}
 		}
 		else
 		{
 			MagnetizePressed(1.f);
-			// SetFloorStatus(EShooterFloorStatus::NoFloorContact); TODO
-			// LastVelocity += Hit.ImpactNormal * (LastVelocity.Size()/2.f); TODO
+			LocalStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::NoFloorContact, LocalStatus);
+			LocalStatus.CurrentVelocity += Hit.ImpactNormal * (LocalStatus.CurrentVelocity.Size()/2.f);
 		}
-		bIsJumpingOffSphereLevel = false;
-		JumpForce = FVector::ZeroVector;
-		CurrentJumpVelocity = FVector::ZeroVector;
+		LocalStatus.bIsJumpingOffSphereLevel = false;
+		LocalStatus.JumpForce = FVector::ZeroVector;
+		LocalStatus.CurrentJumpVelocity = FVector::ZeroVector;
 	}
 }
 
@@ -752,13 +783,13 @@ void ABasePawnPlayer::PassDamageToHealth(AActor* DamagedActor, float Damage, con
 	Health->TakeDamage(DamagedActor, Damage, DamageType, InstigatedBy, DamageCauser);
 }
 
-EShooterFloorStatus ABasePawnPlayer::SetFloorStatus(EShooterFloorStatus InFloorStatus, FShooterStatus& StatusToReset)
+EShooterFloorStatus ABasePawnPlayer::SetFloorStatus(const EShooterFloorStatus StatusToChangeTo, FShooterStatus& StatusToReset)
 {
-	if(InFloorStatus == EShooterFloorStatus::NoFloorContact)
+	if(StatusToChangeTo == EShooterFloorStatus::NoFloorContact)
 	{
 		ZeroOutGravity(StatusToReset);
 	}
-	return InFloorStatus;
+	return StatusToChangeTo;
 }
 
 void ABasePawnPlayer::ZeroOutGravity(FShooterStatus& StatusToReset)
@@ -775,7 +806,7 @@ void ABasePawnPlayer::ServerSendMove_Implementation(FShooterMove ClientMove)
 {
 	CSPStatus = StatusOnServer;
 	
-	CSPStatus.CurrentVelocity += Movement_Internal(ClientMove.MovementVector, ClientMove.ShooterLocation, ClientMove.ShooterRotationBeforeMovement, CSPStatus.CurrentVelocity, FixedTimeStep);
+	CSPStatus.CurrentVelocity += Movement_Internal(ClientMove.MovementVector, CSPStatus, FixedTimeStep);
 	Magnetize_Internal(ClientMove.bMagnetizedPressed, CSPStatus);
 	CSPStatus.ShooterRotation = ClientMove.ShooterRotationAfterMovement;
 	CSPStatus.SpringArmPitch = ClientMove.SpringArmPitch;
@@ -814,7 +845,7 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 	{
 		for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
 		{
-			CSPStatus.CurrentVelocity += Movement_Internal(MoveToPlay.MovementVector, MoveToPlay.ShooterLocation, MoveToPlay.ShooterRotationBeforeMovement, CSPStatus.CurrentVelocity, FixedTimeStep);
+			CSPStatus.CurrentVelocity += Movement_Internal(MoveToPlay.MovementVector, CSPStatus, FixedTimeStep);
 			CSPStatus.ShooterLocation += CSPStatus.CurrentVelocity;
 			DrawDebugPoint(GetWorld(), CSPStatus.ShooterLocation, 30.f, FColor::Blue);
 		}
@@ -897,50 +928,70 @@ void ABasePawnPlayer::DebugMode() const
 {
 	if(bIsInDebugMode && IsLocallyControlled())
 	{
-		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (CurrentVelocity * 10.f), FColor::Green);
+		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (LocalStatus.CurrentVelocity * 10.f), FColor::Green);
 		if(GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1,0.f, FColor::Green, FString::Printf(TEXT("%s"), *GetName()));
 			const FColor CSPDeltaColor = CurrentCSPLocationDelta > ServerClintDeltaTolerance ? FColor::Red : FColor::Green;
 			GEngine->AddOnScreenDebugMessage(-1,0.f, CSPDeltaColor, FString::Printf(TEXT("CurrentCSPLocationDelta: %f"), CurrentCSPLocationDelta));
-			const FColor BoostCountColor = BoostCount == 0 ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, BoostCountColor, FString::Printf(TEXT("BoostCount: %i"), BoostCount));
-			const FColor MagnetizeColor = bIsMagnetized ? FColor::Green : FColor::Red;
-			const FString MagnetizeString = bIsMagnetized ? FString(TEXT("bIsMagnetized: True")) : FString(TEXT("bIsMagnetized: False"));
+			const FColor BoostCountColor = LocalStatus.BoostCount == 0 ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, BoostCountColor, FString::Printf(TEXT("BoostCount: %i"), LocalStatus.BoostCount));
+			const FColor MagnetizeColor = LocalStatus.bMagnetized ? FColor::Green : FColor::Red;
+			const FString MagnetizeString = LocalStatus.bMagnetized ? FString(TEXT("bIsMagnetized: True")) : FString(TEXT("bIsMagnetized: False"));
 			GEngine->AddOnScreenDebugMessage(-1,0.f, MagnetizeColor, MagnetizeString);
-			const FColor JumpBoolColor = bIsJumpingOffSphereLevel ? FColor::Green : FColor::Red;
-			const FString JumpBoolString = bIsJumpingOffSphereLevel ? FString(TEXT("JumpingOffLevelSphere: True")) : FString(TEXT("JumpingOffLevelSphere: False"));
+			const FColor JumpBoolColor = LocalStatus.bIsJumpingOffSphereLevel ? FColor::Green : FColor::Red;
+			const FString JumpBoolString = LocalStatus.bIsJumpingOffSphereLevel ? FString(TEXT("JumpingOffLevelSphere: True")) : FString(TEXT("JumpingOffLevelSphere: False"));
 			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpBoolColor, JumpBoolString);
-			const FColor JumpVelocityColor = CurrentJumpVelocity.IsZero() ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpVelocityColor, FString::Printf(TEXT("CurrentJumpVelocity: %s"), *CurrentJumpVelocity.ToString()));
-			const FColor VelocityColor = CurrentVelocity.IsZero() ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, VelocityColor, FString::Printf(TEXT("CurrentVelocity: %s"), *CurrentVelocity.ToString()));
-			const FColor SphereVelocity = SphereLastVelocity.IsZero() ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, SphereVelocity, FString::Printf(TEXT("SphereLastVelocity: %s"), *SphereLastVelocity.ToString()));
-			const FColor JumpColor = JumpForce.IsZero() ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpColor, FString::Printf(TEXT("JumpForce: %s"), *JumpForce.ToString()));
-			const FColor GravityColor = CurrentGravity.IsZero() ? FColor::Red : FColor::Green;
-			GEngine->AddOnScreenDebugMessage(-1,0.f, GravityColor, FString::Printf(TEXT("CurrentGravity: %s"), *CurrentGravity.ToString()));
-			const FColor FloorColor = ClosestFloor == nullptr ? FColor::Red : FColor::Green;
-			if(ClosestFloor)
+			const FColor JumpVelocityColor = LocalStatus.CurrentJumpVelocity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpVelocityColor, FString::Printf(TEXT("CurrentJumpVelocity: %s"), *LocalStatus.CurrentJumpVelocity.ToString()));
+			const FColor VelocityColor = LocalStatus.CurrentVelocity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, VelocityColor, FString::Printf(TEXT("CurrentVelocity: %f"), LocalStatus.CurrentVelocity.Size()));
+			const FColor SphereVelocity = LocalStatus.SphereLastVelocity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, SphereVelocity, FString::Printf(TEXT("SphereLastVelocity: %s"), *LocalStatus.SphereLastVelocity.ToString()));
+			const FColor JumpColor = LocalStatus.JumpForce.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpColor, FString::Printf(TEXT("JumpForce: %s"), *LocalStatus.JumpForce.ToString()));
+			const FColor GravityColor = LocalStatus.CurrentGravity.IsZero() ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, GravityColor, FString::Printf(TEXT("CurrentGravity: %s"), *LocalStatus.CurrentGravity.ToString()));
+			const FColor FloorColor = LocalStatus.ClosestFloor == nullptr ? FColor::Red : FColor::Green;
+			if(LocalStatus.ClosestFloor)
 			{
-				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorColor, FString::Printf(TEXT("ClosestFloor: %s"), *ClosestFloor->GetName()));
+				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorColor, FString::Printf(TEXT("ClosestFloor: %s"), *LocalStatus.ClosestFloor->GetName()));
 			}
 			else
 			{
 				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorColor, FString::Printf(TEXT("ClosestFloor: NoFloor")));
 			}
-			const FColor FloorHitResultColor = FloorHitResult.bBlockingHit == false ? FColor::Red : FColor::Green;
-			if(ClosestFloor)
+			const FColor FloorHitResultColor = LocalStatus.FloorHitResult.bBlockingHit == false ? FColor::Red : FColor::Green;
+			if(LocalStatus.ClosestFloor)
 			{
-				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorHitResultColor, FString::Printf(TEXT("FloorHitResultImpact: %s"), *FloorHitResult.ImpactPoint.ToString()));
+				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorHitResultColor, FString::Printf(TEXT("FloorHitResultImpact: %s"), *LocalStatus.FloorHitResult.ImpactPoint.ToString()));
 			}
 			else
 			{
 				GEngine->AddOnScreenDebugMessage(-1,0.f, FloorHitResultColor, FString::Printf(TEXT("FloorHitResultImpact: NoImpact")));
 			}
+			const FColor FloorStatusColor = LocalStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact ? FColor::Red : FColor::Green;
+			FString FloorStatusString;
+			switch (LocalStatus.ShooterFloorStatus)
+			{
+			case EShooterFloorStatus::NoFloorContact:
+					FloorStatusString = FString(TEXT("FloorStatus: NoFloor"));
+					break;
+				case EShooterFloorStatus::BaseFloorContact:
+					FloorStatusString = FString(TEXT("FloorStatus: BaseFloor"));
+					break;
+				case EShooterFloorStatus::SphereFloorContact:
+					FloorStatusString = FString(TEXT("FloorStatus: SphereFloor"));
+					break;
+				case EShooterFloorStatus::SphereLevelContact:
+					FloorStatusString = FString(TEXT("FloorStatus: SphereLevel"));
+					break;
+				default:
+					FloorStatusString = FString(TEXT("FloorStatus: NoFloor"));
+					break;
+			}
+			GEngine->AddOnScreenDebugMessage(-1,0.f, FloorStatusColor, FloorStatusString);
 		}
-		
 	}
 }
 
