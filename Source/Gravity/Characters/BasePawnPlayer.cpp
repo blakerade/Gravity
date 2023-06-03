@@ -221,7 +221,7 @@ FVector ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, const FSh
 	const FVector ForwardVector = InStatus.ShooterRotation.Quaternion().GetAxisX();
 	const FVector RightVector = InStatus.ShooterRotation.Quaternion().GetAxisY();
 	const FVector UpVector = InStatus.ShooterRotation.Quaternion().GetAxisZ();
-
+	UE_LOG(LogTemp, Warning, TEXT("ActionValue: %f"), ActionValue.X);
 	if(InStatus.ShooterFloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
 	{
 		
@@ -249,7 +249,7 @@ FVector ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, const FSh
 	}
 	else //if not contacted with a floor
 	{
-		return ForwardVector * ActionValue.X * DeltaTime + RightVector * ActionValue.Y * DeltaTime +  UpVector * ActionValue.Z * DeltaTime;
+		return (ForwardVector * ActionValue.X + RightVector * ActionValue.Y + UpVector * ActionValue.Z) * DeltaTime;
 	}
 	return FVector::ZeroVector;
 }
@@ -307,7 +307,7 @@ void ABasePawnPlayer::LookActivated(const FInputActionValue& ActionValue)
 	YawValue = ActionValue.Get<FVector2D>().X;
 }
 
-FRotator ABasePawnPlayer::PitchLook_Internal(FShooterStatus& OutStatus, float DeltaTime) const
+FRotator ABasePawnPlayer::PitchLook_Internal(FShooterStatus& OutStatus, float DeltaTime)
 {
 	OutStatus.SpringArmPitch = FMath::Clamp(OutStatus.SpringArmPitch + (PitchValue * DeltaTime * SpringArmPitchSpeed), SpringArmPitchMin, SpringArmPitchMax);
 	if(OutStatus.SpringArmPitch > (SpringArmPitchMax - 1.5f) && OutStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
@@ -322,6 +322,7 @@ FRotator ABasePawnPlayer::PitchLook_Internal(FShooterStatus& OutStatus, float De
 	{
 		OutStatus.ShooterSpin = EShooterSpin::NoFlip;
 	}
+	PitchValue = 0.f;
 	return FRotator(OutStatus.SpringArmPitch, OutStatus.SpringArmYaw, 0.f);
 }
 
@@ -336,40 +337,43 @@ FRotator ABasePawnPlayer::AddShooterSpin_Internal(FShooterStatus InStatus, float
 		case EShooterSpin::BackFlip:
 			if(PitchValue <= 0.f)
 			{
-				return FRotator(LocalStatus.LastPitchRotation, 0.f, 0.f);
+				return FRotator(InStatus.LastPitchRotation, 0.f, 0.f);
 			}
-			NewPitchRotation = FMath::Clamp(LocalStatus.LastPitchRotation + PitchValue * AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
-			return FRotator(LocalStatus.LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+			NewPitchRotation = FMath::Clamp(InStatus.LastPitchRotation + PitchValue * AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
+			return FRotator(InStatus.LastPitchRotation = NewPitchRotation, 0.f, 0.f);
 		case EShooterSpin::FrontFlip:
 			if(PitchValue >= 0.f)
 			{
-				return FRotator(LocalStatus.LastPitchRotation, 0.f, 0.f);
+				return FRotator(InStatus.LastPitchRotation, 0.f, 0.f);
 			}
-			NewPitchRotation = FMath::Clamp(LocalStatus.LastPitchRotation - PitchValue * -AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
-			return FRotator(LocalStatus.LastPitchRotation = NewPitchRotation, 0.f, 0.f);
+			NewPitchRotation = FMath::Clamp(InStatus.LastPitchRotation - PitchValue * -AirPitchSpeed * DeltaTime, -MaxPitchSpeed, MaxPitchSpeed);
+			return FRotator(InStatus.LastPitchRotation = NewPitchRotation, 0.f, 0.f);
 		case EShooterSpin::NoFlip:
-			return FRotator(LocalStatus.LastPitchRotation, 0.f, 0.f);
+			return FRotator(InStatus.LastPitchRotation, 0.f, 0.f);
 		default:
-			return FRotator(LocalStatus.LastPitchRotation, 0.f, 0.f);
+			return FRotator(InStatus.LastPitchRotation, 0.f, 0.f);
 		}
 	}
 	return FRotator(LocalStatus.LastPitchRotation, 0.f, 0.f);
 }
 
-FRotator ABasePawnPlayer::YawLook_Internal(FShooterStatus InStatus, float DeltaTime)
+FRotator ABasePawnPlayer::YawLook_Internal(FShooterStatus& OutStatus, float DeltaTime)
 {
 	//We are contacted to a floor
-	if(InStatus.ShooterFloorStatus != EShooterFloorStatus::NoFloorContact)
+	if(OutStatus.ShooterFloorStatus != EShooterFloorStatus::NoFloorContact)
 	{
-		return FRotator(0.f, YawValue, 0.f);
+		const float FloorValue = YawValue;
+		YawValue = 0.f;
+		return FRotator(0.f, FloorValue, 0.f);
 	}
 	//We are not contacted to a floor
 	if(YawValue == 0.f)
 	{
-		return FRotator(0.f, LocalStatus.LastYawRotation, 0.f);
+		return FRotator(0.f, OutStatus.LastYawRotation, 0.f);
 	}
-	const float NewYawRotation = FMath::Clamp(LocalStatus.LastYawRotation + YawValue * AirRotationSpeed * DeltaTime, -AirRotationMaxSpeed, AirRotationMaxSpeed);
-	return FRotator(0.f, LocalStatus.LastYawRotation = NewYawRotation, 0.f);
+	const float NewYawRotation = FMath::Clamp(OutStatus.LastYawRotation + YawValue * AirRotationSpeed * DeltaTime, -AirRotationMaxSpeed, AirRotationMaxSpeed);
+	YawValue = 0.f;
+	return FRotator(0.f, OutStatus.LastYawRotation = NewYawRotation, 0.f);
 }
 
 void ABasePawnPlayer::JumpPressed(const FInputActionValue& ActionValue)
@@ -559,7 +563,6 @@ FTransform ABasePawnPlayer::PerformGravity(FShooterStatus& OutStatus, const floa
 	NewActorTransform.SetRotation(OutStatus.ShooterRotation.Quaternion());
 	if(OutStatus.bMagnetized && OutStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("IN"));
 		if(OutStatus.bIsJumpingOffSphereLevel)
 		{
 			FindClosestFloor(NewActorTransform, OutStatus);
@@ -610,7 +613,6 @@ FTransform ABasePawnPlayer::PerformGravity(FShooterStatus& OutStatus, const floa
 		OutStatus.LastPitchRotation = 0.f;
 		return NewActorTransform;
 	}
-	UE_LOG(LogTemp, Warning, TEXT("OUT"));
 	return NewActorTransform;
 }
 
@@ -946,6 +948,14 @@ void ABasePawnPlayer::DebugMode() const
 			GEngine->AddOnScreenDebugMessage(-1,0.f, JumpVelocityColor, FString::Printf(TEXT("CurrentJumpVelocity: %s"), *LocalStatus.CurrentJumpVelocity.ToString()));
 			const FColor VelocityColor = LocalStatus.CurrentVelocity.IsZero() ? FColor::Red : FColor::Green;
 			GEngine->AddOnScreenDebugMessage(-1,0.f, VelocityColor, FString::Printf(TEXT("CurrentVelocity: %f"), LocalStatus.CurrentVelocity.Size()));
+			const FColor PitchColor = PitchValue == 0.f ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, PitchColor, FString::Printf(TEXT("PitchValue: %f"), PitchValue));
+			const FColor LastPitchColor = LocalStatus.LastPitchRotation == 0.f ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, LastPitchColor, FString::Printf(TEXT("LastPitchRotation: %f"),  LocalStatus.LastPitchRotation));
+			const FColor YawColor = PitchValue == 0.f ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, YawColor, FString::Printf(TEXT("YawValue: %f"), YawValue));
+			const FColor LastYawColor = LocalStatus.LastYawRotation == 0.f ? FColor::Red : FColor::Green;
+			GEngine->AddOnScreenDebugMessage(-1,0.f, LastYawColor, FString::Printf(TEXT("LastYawRotation: %f"),  LocalStatus.LastYawRotation));
 			const FColor SphereVelocity = LocalStatus.SphereLastVelocity.IsZero() ? FColor::Red : FColor::Green;
 			GEngine->AddOnScreenDebugMessage(-1,0.f, SphereVelocity, FString::Printf(TEXT("SphereLastVelocity: %s"), *LocalStatus.SphereLastVelocity.ToString()));
 			const FColor JumpColor = LocalStatus.JumpForce.IsZero() ? FColor::Red : FColor::Green;

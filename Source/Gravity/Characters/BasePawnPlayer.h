@@ -202,12 +202,6 @@ protected:
 	
 	
 	void Crouch(const FInputActionValue& ActionValue);
-
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float FloorFriction = 4.f;
-	UPROPERTY(EditAnywhere, Category=Movement)
-	float AirFriction = 0.01f;
-
 	void Equip(const FInputActionValue& ActionValue);
 	void FirePressed(const FInputActionValue& ActionValue);
 	
@@ -311,7 +305,7 @@ private:
 	UPROPERTY(Replicated)
 	float SpringArmClientPitch;
 	
-	FRotator PitchLook_Internal(FShooterStatus& OutStatus, float DeltaTime) const;
+	FRotator PitchLook_Internal(FShooterStatus& OutStatus, float DeltaTime);
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float SpringArmPitchSpeed = 10.f;
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
@@ -329,7 +323,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = MouseMovement)
 	float MaxPitchSpeed = 5.f;
 	
-	FRotator YawLook_Internal(FShooterStatus InStatus, float DeltaTime);
+	FRotator YawLook_Internal(FShooterStatus& OutStatus, float DeltaTime);
 	float LastYawRotation = 0.f;
 	UPROPERTY(EditAnywhere, Category=MouseMovement)
 	float AirRotationSpeed = 0.25f;
