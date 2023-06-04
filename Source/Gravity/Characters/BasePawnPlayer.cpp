@@ -175,8 +175,11 @@ void ABasePawnPlayer::ShooterMovement(const float DeltaTime)
 			LocalStatus.CurrentVelocity = Movement_Internal(MoveToSend.MovementVector, LocalStatus, DeltaTime);
 			Magnetize_Internal(MoveToSend.bMagnetizedPressed, LocalStatus);
 			Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, false, LocalStatus);
-			SetActorTransform(PerformGravity(LocalStatus, DeltaTime));
-			AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, LocalStatus, DeltaTime));
+			if(LocalStatus.ShooterFloorStatus != EShooterFloorStatus::BaseFloorContact)
+			{
+				SetActorTransform(PerformGravity(LocalStatus, DeltaTime));
+			}
+			// AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, LocalStatus, DeltaTime));
 		}
 		SpringArm->SetRelativeRotation(PitchLook_Internal(LocalStatus, DeltaTime));
 		AddActorLocalRotation(AddShooterSpin_Internal(LocalStatus, DeltaTime));
@@ -641,19 +644,26 @@ void ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FShooterStatus
 		{
 			if(World && Floor.GetActor())
 			{
-				World->SweepSingleByChannel(OutStatus.FloorHitResult, ActorTransform.GetLocation(), Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
-				if(OutStatus.FloorHitResult.bBlockingHit && (OutStatus.FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size() < OutStatus.ClosestDistanceToFloor)
+				FHitResult FindFloorHitResult;
+				World->SweepSingleByChannel(FindFloorHitResult, ActorTransform.GetLocation(), Floor.GetActor()->GetActorLocation(), FQuat::Identity, ECC_GameTraceChannel1, TraceShape, QueryParams, ResponseParams);
+				if(FindFloorHitResult.bBlockingHit && (FindFloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size() < OutStatus.ClosestDistanceToFloor)
 				{
 					if(bIsInDebugMode)
 					{
-						DrawDebugPoint(World, OutStatus.FloorHitResult.ImpactPoint, 50.f, FColor::Red);
+						DrawDebugPoint(World, FindFloorHitResult.ImpactPoint, 50.f, FColor::Red);
 					}
+					OutStatus.FloorHitResult = FindFloorHitResult;
 					OutStatus.ClosestDistanceToFloor = (OutStatus.FloorHitResult.ImpactPoint - ActorTransform.GetLocation()).Size();
 					OutStatus.ClosestFloor = Floor.GetActor();
 					OutStatus.CurrentGravity = OutStatus.FloorHitResult.ImpactPoint - ActorTransform.GetLocation();
 				}
 			}
 		}
+		if(OutStatus.ClosestFloor != nullptr)
+		{
+			DrawDebugLine(GetWorld(), GetActorLocation(), OutStatus.ClosestFloor->GetActorLocation(), FColor::Red, false, 2.f);
+		}
+		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + OutStatus.CurrentGravity, FColor::Blue, false, 2.f);
 	}
 }
 
@@ -685,6 +695,7 @@ FRotator ABasePawnPlayer::OrientToGravity(const FRotator InActorRotation, const 
 FVector ABasePawnPlayer::GravityForce(const FVector InActorLocation, FShooterStatus& OutStatus, const float DeltaTime) const
 {
 	OutStatus.ClosestDistanceToFloor = OutStatus.FloorHitResult.Distance + SphereTraceRadius;
+	DrawDebugLine(GetWorld(), GetActorLocation(), OutStatus.FloorHitResult.ImpactPoint, FColor::Orange, false, 2.f);
 	const float DistancePct = FMath::Abs(150 - 100 * (OutStatus.ClosestDistanceToFloor/GravityDistanceRadius));
 	FVector NewVector;
 	if(OutStatus.FloorHitResult.bBlockingHit && DistancePct == 100.f)
