@@ -10,6 +10,7 @@
 #include "VectorTypes.h"
 #include "Chaos/SpatialAccelerationCollection.h"
 #include "Components/BoxComponent.h"
+#include "Components/SphereComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "Gravity/Components/ShooterCombatComponent.h"
 #include "Gravity/Components/ShooterHealthComponent.h"
@@ -31,6 +32,8 @@ ABasePawnPlayer::ABasePawnPlayer()
 	Capsule->SetCapsuleRadius(30.f);
 	Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Skeleton");
 	Skeleton->SetupAttachment(RootComponent);
+	FootSphere = CreateDefaultSubobject<USphereComponent>("FootCheck");
+	FootSphere->SetupAttachment(Skeleton);
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>("SpringArm");
 	SpringArm->SetupAttachment(Skeleton);
 	Camera = CreateDefaultSubobject<UCameraComponent>("Camera");
@@ -97,9 +100,10 @@ void ABasePawnPlayer::BeginPlay()
 			Subsystem->AddMappingContext(CharacterCombatMapping, 1.f);
 		}
 	}
-	if(Capsule)
+	if(Capsule && FootSphere && IsLocallyControlled())
 	{
 		Capsule->OnComponentHit.AddDynamic(this, &ABasePawnPlayer::OnFloorHit);
+		FootSphere->OnComponentEndOverlap.AddDynamic(this, &ABasePawnPlayer::EndFloorCheck);
 	}
 	OnTakeAnyDamage.AddDynamic(this, &ABasePawnPlayer::PassDamageToHealth);
 	if(IsLocallyControlled())
@@ -168,17 +172,17 @@ void ABasePawnPlayer::ShooterMovement(const float DeltaTime)
 			BuildBoost(MoveToSend);
 			if(GetWorld() && GetWorld()->GetGameState()) MoveToSend.GameTime = GetWorld()->GetGameState()->GetServerWorldTimeSeconds();
 			
-			LocalStatus.CurrentVelocity += Movement_Internal(MoveToSend.MovementVector, LocalStatus, DeltaTime);
+			LocalStatus.CurrentVelocity = Movement_Internal(MoveToSend.MovementVector, LocalStatus, DeltaTime);
 			Magnetize_Internal(MoveToSend.bMagnetizedPressed, LocalStatus);
-			
-			AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, LocalStatus, DeltaTime));
 			Boost_Internal(MoveToSend.BoostDirection, MoveToSend.bBoost, false, LocalStatus);
 			SetActorTransform(PerformGravity(LocalStatus, DeltaTime));
+			AddActorWorldOffset(Jump_Internal(MoveToSend.bJumped, LocalStatus, DeltaTime));
 		}
 		SpringArm->SetRelativeRotation(PitchLook_Internal(LocalStatus, DeltaTime));
 		AddActorLocalRotation(AddShooterSpin_Internal(LocalStatus, DeltaTime));
 		AddActorLocalRotation(YawLook_Internal(LocalStatus, DeltaTime));
 		AddActorWorldOffset(LocalStatus.CurrentVelocity);
+		
 		LocalStatus.ShooterLocation = GetActorLocation();
 		LocalStatus.ShooterRotation = GetActorRotation();
 		MoveToSend.LastPitchRotation = LocalStatus.LastPitchRotation;
@@ -221,7 +225,7 @@ FVector ABasePawnPlayer::TotalMovementInput(const FVector ActionValue, const FSh
 	const FVector ForwardVector = InStatus.ShooterRotation.Quaternion().GetAxisX();
 	const FVector RightVector = InStatus.ShooterRotation.Quaternion().GetAxisY();
 	const FVector UpVector = InStatus.ShooterRotation.Quaternion().GetAxisZ();
-	UE_LOG(LogTemp, Warning, TEXT("ActionValue: %f"), ActionValue.X);
+	
 	if(InStatus.ShooterFloorStatus != EShooterFloorStatus::NoFloorContact) //if contacted with a floor
 	{
 		
@@ -298,7 +302,7 @@ FVector ABasePawnPlayer::CalculateMovementVelocity(const FVector InMovementInput
 		const FVector NewPosition = SphereToActor.RotateAngleAxis(OutStatus.SphereLastVelocity.Size(), InputRotation.GetUnitAxis(EAxis::Y));
 		return NewPosition - SphereToActor;
 	}
-	return InMovementInput * AirSpeed;
+	return OutStatus.CurrentVelocity + InMovementInput * AirSpeed;
 }
 
 void ABasePawnPlayer::LookActivated(const FInputActionValue& ActionValue)
@@ -398,7 +402,6 @@ FVector ABasePawnPlayer::Jump_Internal(const bool bJumpWasPressed, FShooterStatu
 		OutStatus.CurrentJumpVelocity = OutStatus.ShooterLocation - OutStatus.LastJumpPosition;
 		OutStatus.LastJumpPosition = OutStatus.ShooterLocation;
 		return OutStatus.JumpForce;
-
 	}
 	if(bJumpWasPressed)
 	{
@@ -409,8 +412,8 @@ FVector ABasePawnPlayer::Jump_Internal(const bool bJumpWasPressed, FShooterStatu
 				OutStatus.bIsJumpingOffSphereLevel = true;
 			}
 			OutStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::NoFloorContact, OutStatus);
-			OutStatus.JumpForce = OutStatus.ShooterRotation.Quaternion().GetAxisZ() * JumpVelocity;
-			OutStatus.JumpForce += OutStatus.CurrentVelocity;
+			OutStatus.JumpForce = OutStatus.ShooterRotation.Quaternion().GetAxisZ() * JumpVelocity + OutStatus.CurrentVelocity;
+			OutStatus.CurrentVelocity = FVector::ZeroVector;
 			OutStatus.LastJumpPosition = OutStatus.ShooterLocation;
 			return OutStatus.JumpForce;
 		}
@@ -701,7 +704,7 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 {
 	if(LocalStatus.ShooterFloorStatus == EShooterFloorStatus::NoFloorContact && LocalStatus.bMagnetized)
 	{
-		if(FVector::DotProduct(GetActorUpVector(), Hit.ImpactNormal) > 0.7f)
+		if(FVector::DotProduct(GetActorUpVector(), Hit.ImpactNormal) > 0.9f)
 		{
 			if(const ASphereFloorBase* SphereFloor = Cast<ASphereFloorBase>(OtherActor))
 			{
@@ -752,9 +755,13 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 			LocalStatus.CurrentVelocity += Hit.ImpactNormal * (LocalStatus.CurrentVelocity.Size()/2.f);
 		}
 		LocalStatus.bIsJumpingOffSphereLevel = false;
-		LocalStatus.JumpForce = FVector::ZeroVector;
 		LocalStatus.CurrentJumpVelocity = FVector::ZeroVector;
 	}
+}
+
+void ABasePawnPlayer::EndFloorCheck(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	UE_LOG(LogTemp, Warning, TEXT("END: %f"), GetWorld()->TimeSeconds);
 }
 
 void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
@@ -808,7 +815,7 @@ void ABasePawnPlayer::ServerSendMove_Implementation(FShooterMove ClientMove)
 {
 	CSPStatus = StatusOnServer;
 	
-	CSPStatus.CurrentVelocity += Movement_Internal(ClientMove.MovementVector, CSPStatus, FixedTimeStep);
+	CSPStatus.CurrentVelocity = Movement_Internal(ClientMove.MovementVector, CSPStatus, FixedTimeStep);
 	Magnetize_Internal(ClientMove.bMagnetizedPressed, CSPStatus);
 	CSPStatus.ShooterRotation = ClientMove.ShooterRotationAfterMovement;
 	CSPStatus.SpringArmPitch = ClientMove.SpringArmPitch;
@@ -847,7 +854,7 @@ void ABasePawnPlayer::PlayUnacknowledgedMoves()
 	{
 		for(const FShooterMove MoveToPlay: UnacknowledgedMoves)
 		{
-			CSPStatus.CurrentVelocity += Movement_Internal(MoveToPlay.MovementVector, CSPStatus, FixedTimeStep);
+			CSPStatus.CurrentVelocity = Movement_Internal(MoveToPlay.MovementVector, CSPStatus, FixedTimeStep);
 			CSPStatus.ShooterLocation += CSPStatus.CurrentVelocity;
 			DrawDebugPoint(GetWorld(), CSPStatus.ShooterLocation, 30.f, FColor::Blue);
 		}

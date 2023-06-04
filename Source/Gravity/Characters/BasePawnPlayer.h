@@ -10,6 +10,7 @@
 #include "Gravity/GravityTypes/ShooterFloorStatus.h"
 #include "BasePawnPlayer.generated.h"
 
+class USphereComponent;
 class UShooterHealthComponent;
 class AWeaponBase;
 class UBoxComponent;
@@ -124,7 +125,7 @@ public:
 	void DebugMode() const;
 	UFUNCTION(Exec)
 	void SwitchDebugMode();
-	bool bIsInDebugMode = false
+	bool bIsInDebugMode = true;
 	;
 	
 protected:
@@ -165,6 +166,8 @@ protected:
 	//Components
 	UPROPERTY(EditAnywhere)
 	UCapsuleComponent* Capsule;
+	UPROPERTY(EditAnywhere)
+	USphereComponent* FootSphere;
 	UPROPERTY(EditAnywhere)
 	USkeletalMeshComponent* Skeleton;
 	UPROPERTY(EditAnywhere)
@@ -211,6 +214,8 @@ protected:
 		UPrimitiveComponent* OtherComp,
 		FVector NormalImpulse,
 		const FHitResult& Hit);
+	UFUNCTION()
+	void EndFloorCheck(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 	UPROPERTY(EditAnywhere)
 	float KnockBackImpulse = 1.75f;
