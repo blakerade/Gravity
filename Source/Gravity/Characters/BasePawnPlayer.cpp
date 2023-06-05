@@ -414,7 +414,6 @@ FVector ABasePawnPlayer::Jump_Internal(const bool bJumpWasPressed, FShooterStatu
 			{
 				OutStatus.bIsJumpingOffSphereLevel = true;
 			}
-			OutStatus.ShooterFloorStatus = SetFloorStatus(EShooterFloorStatus::NoFloorContact, OutStatus);
 			OutStatus.JumpForce = OutStatus.ShooterRotation.Quaternion().GetAxisZ() * JumpVelocity + OutStatus.CurrentVelocity;
 			OutStatus.CurrentVelocity = FVector::ZeroVector;
 			OutStatus.LastJumpPosition = OutStatus.ShooterLocation;
@@ -659,11 +658,6 @@ void ABasePawnPlayer::FindClosestFloor(FTransform ActorTransform, FShooterStatus
 				}
 			}
 		}
-		if(OutStatus.ClosestFloor != nullptr)
-		{
-			DrawDebugLine(GetWorld(), GetActorLocation(), OutStatus.ClosestFloor->GetActorLocation(), FColor::Red, false, 2.f);
-		}
-		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + OutStatus.CurrentGravity, FColor::Blue, false, 2.f);
 	}
 }
 
@@ -695,7 +689,6 @@ FRotator ABasePawnPlayer::OrientToGravity(const FRotator InActorRotation, const 
 FVector ABasePawnPlayer::GravityForce(const FVector InActorLocation, FShooterStatus& OutStatus, const float DeltaTime) const
 {
 	OutStatus.ClosestDistanceToFloor = OutStatus.FloorHitResult.Distance + SphereTraceRadius;
-	DrawDebugLine(GetWorld(), GetActorLocation(), OutStatus.FloorHitResult.ImpactPoint, FColor::Orange, false, 2.f);
 	const float DistancePct = FMath::Abs(150 - 100 * (OutStatus.ClosestDistanceToFloor/GravityDistanceRadius));
 	FVector NewVector;
 	if(OutStatus.FloorHitResult.bBlockingHit && DistancePct == 100.f)
@@ -726,6 +719,8 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 				LocalStatus.CurrentVelocity = FVector::ZeroVector;
 				LocalStatus.SphereLastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
+				Capsule->SetSimulatePhysics(false);
+
 			}
 			else if(const AGravitySphere* LevelSphere = Cast<AGravitySphere>(OtherActor))
 			{
@@ -736,6 +731,8 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 				LocalStatus.CurrentVelocity = FVector::ZeroVector;
 				LocalStatus.SphereLastVelocity = FVector::ZeroVector;
 				SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
+				Capsule->SetSimulatePhysics(false);
+
 			}
 			else if(const AFloorBase* Floor = Cast<AFloorBase>(OtherActor))
 			{
@@ -750,6 +747,8 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 					LocalStatus.CurrentVelocity = FVector::ZeroVector;
 					LocalStatus.SphereLastVelocity = FVector::ZeroVector;
 					SetActorRotation(FRotationMatrix::MakeFromZX(Hit.ImpactNormal, GetActorForwardVector()).Rotator());
+					Capsule->SetSimulatePhysics(false);
+
 				}
 				else
 				{
@@ -772,7 +771,13 @@ void ABasePawnPlayer::OnFloorHit(UPrimitiveComponent* HitComponent, AActor* Othe
 
 void ABasePawnPlayer::EndFloorCheck(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	UE_LOG(LogTemp, Warning, TEXT("END: %f"), GetWorld()->TimeSeconds);
+	if(LocalStatus.bMagnetized && OtherActor == LocalStatus.ClosestFloor)
+	{
+		Magnetize_Internal(true, LocalStatus);
+		Capsule->SetSimulatePhysics(true);
+		UE_LOG(LogTemp, Warning, TEXT("END: %f"), GetWorld()->TimeSeconds);
+	}
+	UE_LOG(LogTemp, Warning, TEXT("END 1: %f"), GetWorld()->TimeSeconds);
 }
 
 void ABasePawnPlayer::Equip(const FInputActionValue& ActionValue)
@@ -808,6 +813,7 @@ EShooterFloorStatus ABasePawnPlayer::SetFloorStatus(const EShooterFloorStatus St
 	if(StatusToChangeTo == EShooterFloorStatus::NoFloorContact)
 	{
 		ZeroOutGravity(StatusToReset);
+		Capsule->SetSimulatePhysics(true);
 	}
 	return StatusToChangeTo;
 }
@@ -949,6 +955,7 @@ void ABasePawnPlayer::DebugMode() const
 	if(bIsInDebugMode && IsLocallyControlled())
 	{
 		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (LocalStatus.CurrentVelocity * 10.f), FColor::Green);
+		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (LocalStatus.JumpForce * 10.f), FColor::Blue);
 		if(GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1,0.f, FColor::Green, FString::Printf(TEXT("%s"), *GetName()));
