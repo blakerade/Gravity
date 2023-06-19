@@ -84,11 +84,7 @@ struct FShooterStatus
 	UPROPERTY()
 	FVector_NetQuantize CurrentVelocity = FVector::ZeroVector;
 	UPROPERTY()
-	FVector_NetQuantize CurrentJumpVelocity = FVector::ZeroVector;
-	UPROPERTY()
 	FVector_NetQuantize JumpForce;
-	UPROPERTY()
-	FVector_NetQuantize LastJumpPosition;
 	UPROPERTY()
 	FVector_NetQuantize SphereLastVelocity = FVector::ZeroVector;
 	UPROPERTY()
@@ -102,11 +98,11 @@ struct FShooterStatus
 	UPROPERTY()
 	AActor* ClosestFloor = nullptr;
 	UPROPERTY()
+	AActor* CurrentFloor = nullptr;
+	UPROPERTY()
 	FHitResult FloorHitResult;
 	UPROPERTY()
 	FVector_NetQuantize CurrentGravity;
-	UPROPERTY()
-	bool bIsJumpingOffSphereLevel = false;
 	UPROPERTY()
 	FVector_NetQuantize SphereLocation;
 };
@@ -167,7 +163,7 @@ protected:
 	UPROPERTY(EditAnywhere)
 	UCapsuleComponent* Capsule;
 	UPROPERTY(EditAnywhere)
-	USphereComponent* FootSphere;
+	UBoxComponent* FootBox;
 	UPROPERTY(EditAnywhere)
 	USkeletalMeshComponent* Skeleton;
 	UPROPERTY(EditAnywhere)
@@ -427,6 +423,9 @@ private:
 	
 	void ZeroOutGravity(FShooterStatus& StatusToReset);
 
+	UPROPERTY()
+	AActor* GravityLevelSphere = nullptr;
+
 	
 	
 public:
@@ -434,10 +433,10 @@ public:
 	EShooterFloorStatus SetFloorStatus(EShooterFloorStatus StatusToChangeTo, FShooterStatus& StatusToReset);
 	float GetSpringArmPitch() const;
 	bool GetIsMagnetized() const;
-	// FORCEINLINE void SetIsMagnetized(bool bMagnetization) { bIsMagnetized = bMagnetization; }
 	FORCEINLINE USkeletalMeshComponent* GetMesh() const { return Skeleton; }
 	FVector GetHitTarget();
 	FORCEINLINE UShooterCombatComponent* GetCombatComponent() const { return Combat; }
 	FORCEINLINE UShooterHealthComponent* GetHealthComponent() const { return Health; }
+	FORCEINLINE void SetLevelSphere(AActor* SphereToSet) { GravityLevelSphere = SphereToSet;}
 };
 
